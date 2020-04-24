@@ -87,8 +87,8 @@ server <- function(input, output) {
     
     output$Plot_TotalCases <- renderPlot({
         NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, cases, group = paste0(county, state))) + 
-            geom_line(aes(color = paste0(county, state))) +
+        ggplot(NYT_countydata.subset, aes(date, cases, group = countystate)) + 
+            geom_line(aes(color = countystate)) +
             labs(title = "Total Cases") + 
             theme_pubr() + 
             theme(legend.title = element_blank())
@@ -96,8 +96,8 @@ server <- function(input, output) {
     
     output$Plot_NewCases <- renderPlot({
         NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, new.cases, group = paste0(county, state))) + 
-            geom_line(aes(color = paste0(county, state))) +
+        ggplot(NYT_countydata.subset, aes(date, new.cases, group = countystate)) + 
+            geom_line(aes(color = countystate)) +
             labs(title = "New Cases") + 
             theme_pubr() + 
             theme(legend.title = element_blank())
@@ -105,8 +105,8 @@ server <- function(input, output) {
     
     output$Plot_Rstat <- renderPlot({
         NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, Rs, group = paste0(county, state))) + 
-            geom_line(aes(color = paste0(county, state))) +
+        ggplot(NYT_countydata.subset, aes(date, Rs, group = countystate)) + 
+            geom_line(aes(color = countystate)) +
             labs(title = "Simplified R estimate") +
             theme_pubr() + 
             theme(legend.title = element_blank())
