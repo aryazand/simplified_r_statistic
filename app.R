@@ -60,7 +60,7 @@ ui <- fluidPage(
     sidebarLayout(
         sidebarPanel(
             selectInput(inputId = "county",
-                        label = "Select County :",
+                        label = "Search & Select County (multiple selection allowed):",
                         choices = c("Choose one" = "", county.states),
                         multiple = T
                         )
