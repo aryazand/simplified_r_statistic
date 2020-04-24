@@ -18,8 +18,12 @@ library(ggpubr)
 NYT_countydata <- read_csv("./data/NYT_us-counties.csv", col_types = "Dcccnn")
 
 # *****************
-# Calculate Stats
+# Transform Data
 # *****************
+
+# Create a unique idea for each county based on names
+NYT_countydata <- NYT_countydata %>% 
+    mutate(countystate = paste(county, state, sep=", "))
 
 # Calculate new cases
 NYT_countydata <- NYT_countydata %>%
@@ -57,7 +61,8 @@ ui <- fluidPage(
         sidebarPanel(
             selectInput(inputId = "county",
                         label = "Select County :",
-                        choices = c("Choose one" = "", county.states)
+                        choices = c("Choose one" = "", county.states),
+                        multiple = T
                         )
         ),
 
@@ -75,36 +80,36 @@ server <- function(input, output) {
     
     # Subset data to only the county of interest
     NYT_countydata.subset = reactive({
-        # Split the string from the "county" input textbox into county and state
-        county.state.split = str_split(string = input$county, pattern = ", ")[[1]]
-        
         #Subset
         NYT_countydata %>%
-            filter(county == county.state.split[1], state == county.state.split[2])
+            filter(countystate %in% input$county)
     })
     
     output$Plot_TotalCases <- renderPlot({
         NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, cases)) + 
-            geom_line() +
+        ggplot(NYT_countydata.subset, aes(date, cases, group = paste0(county, state))) + 
+            geom_line(aes(color = paste0(county, state))) +
             labs(title = "Total Cases") + 
-            theme_pubr()
+            theme_pubr() + 
+            theme(legend.title = element_blank())
     })
     
     output$Plot_NewCases <- renderPlot({
         NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, new.cases)) + 
-            geom_line() + 
+        ggplot(NYT_countydata.subset, aes(date, new.cases, group = paste0(county, state))) + 
+            geom_line(aes(color = paste0(county, state))) +
             labs(title = "New Cases") + 
-            theme_pubr()
+            theme_pubr() + 
+            theme(legend.title = element_blank())
     })
     
     output$Plot_Rstat <- renderPlot({
         NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, Rs)) +
-            geom_line() +
+        ggplot(NYT_countydata.subset, aes(date, Rs, group = paste0(county, state))) + 
+            geom_line(aes(color = paste0(county, state))) +
             labs(title = "Simplified R estimate") +
-            theme_pubr()
+            theme_pubr() + 
+            theme(legend.title = element_blank())
     })
 
     
