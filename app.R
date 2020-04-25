@@ -32,14 +32,6 @@ NYT_countydata <- NYT_countydata %>%
     mutate(new.cases = cases - c(0, cases[-length(cases)])) %>%
     ungroup()
 
-#Calculate the R statistic
-NYT_countydata <- NYT_countydata %>%
-    group_by(county, state, fips) %>%
-    arrange(date) %>%
-    mutate(denominator = head(c(NA,NA,NA,NA, new.cases),-4)) %>%
-    mutate(Rs = new.cases/denominator) %>%
-    ungroup()
-
 # ***************
 # Create labels for ui from data
 # ***************
@@ -63,7 +55,25 @@ ui <- fluidPage(
                         label = "Search & Select County (multiple selection allowed):",
                         choices = c("Choose one" = "", county.states),
                         multiple = T
-                        )
+                        ),
+            
+            dateRangeInput(inputId = "dateRange",
+                           label = "select dates",
+                           start = "2020-01-21",
+                           end = Sys.Date()),
+            
+            sliderInput(inputId = "reference_date",
+                        label = "Select a reference day for calculating Rs:",
+                        min = -5, max = 0, value = -4, step = 1),
+            
+            radioButtons(inputId = "smoothing_kernal",
+                         label = "Select a smoothing kernal for smoothing new cases per each day:",
+                         choices = c("box", "normal"),
+                         selected = "box"),
+            
+            sliderInput(inputId = "smoothing_bandwidth",
+                        label = "Smoothing Bandwidth:",
+                        min = 1, max = 5, value = 3, step = 1)
         ),
 
         # Show a plot of the generated distribution
@@ -79,15 +89,20 @@ ui <- fluidPage(
 server <- function(input, output) {
     
     # Subset data to only the county of interest
-    NYT_countydata.subset = reactive({
-        #Subset
+    data = reactive({
         NYT_countydata %>%
-            filter(countystate %in% input$county)
+            arrange(date) %>%
+            group_by(county, state, fips) %>%
+            mutate(new.cases_smoothed = ksmooth(date, new.cases, kernel = input$smoothing_kernal, bandwidth = input$smoothing_bandwidth, n.points = n())$y) %>%
+            mutate(denominator = head(c(rep(NA, input$reference_date*-1), new.cases_smoothed), input$reference_date)) %>%
+            mutate(denominator = replace(denominator, denominator == 0, 1)) %>%
+            ungroup() %>%
+            mutate(Rs = new.cases_smoothed/denominator) %>%
+            filter(countystate %in% input$county, date >= as.Date(input$dateRange[1]), date <= as.Date(input$dateRange[2]))
     })
     
     output$Plot_TotalCases <- renderPlot({
-        NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, cases, group = countystate)) + 
+        ggplot(data(), aes(date, cases, group = countystate)) + 
             geom_line(aes(color = countystate)) +
             labs(title = "Total Cases") + 
             theme_pubr() + 
@@ -95,24 +110,21 @@ server <- function(input, output) {
     })
     
     output$Plot_NewCases <- renderPlot({
-        NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, new.cases, group = countystate)) + 
-            geom_line(aes(color = countystate)) +
+        ggplot(data()) + 
+            geom_line(aes(date, new.cases, group = countystate, color = countystate), alpha=0.75) +
+            geom_line(aes(date, new.cases_smoothed, group = countystate, color = countystate), alpha=1, size = 1.5) + 
             labs(title = "New Cases") + 
             theme_pubr() + 
             theme(legend.title = element_blank())
     })
     
     output$Plot_Rstat <- renderPlot({
-        NYT_countydata.subset <- NYT_countydata.subset()
-        ggplot(NYT_countydata.subset, aes(date, Rs, group = countystate)) + 
+        ggplot(data(), aes(date, Rs, group = countystate)) + 
             geom_line(aes(color = countystate)) +
             labs(title = "Simplified R estimate") +
             theme_pubr() + 
             theme(legend.title = element_blank())
     })
-
-    
 }
 
 # Run the application 
