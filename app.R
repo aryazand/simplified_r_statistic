@@ -17,19 +17,24 @@ library(ggpubr)
 
 NYT_countydata <- read_csv("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv", col_types = "Dcccnn")
 NYT_statedata <- read_csv("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv", col_types = "Dccnn")
+countrydata <- read_csv("https://covid.ourworldindata.org/data/ecdc/full_data.csv", col_types = "Dcnnnn")
 
 # *****************
 # Transform Data
 # *****************
 
-# Create a unique idea for each county based on names
+# Create a unique label for each region in each dataset
 NYT_countydata <- NYT_countydata %>% 
-    mutate(label = paste(county, state, sep=", "))
+    mutate(region = paste(county, state, sep=", "))
 
-NYT_statedata <- NYT_statedata %>% 
-    mutate(label = state)
+NYT_statedata <- NYT_statedata %>% rename(region = state)
 
-# Calculate new cases
+countrydata <- countrydata %>% 
+    rename(region = location, new.cases = new_cases, cases = total_cases)
+
+# Calculate new cases for NYT data
+# country data already has new cases is original dataset
+
 newcases_helperfunction = function(data) {
     data <- data %>%
         group_by_at(setdiff(names(data), c("date", "cases", "deaths"))) %>%
@@ -57,13 +62,13 @@ ui <- fluidPage(
         sidebarPanel(
             radioButtons(inputId = "datasource",
                          label = "Select type geographic level: ",
-                         choices = c("State", "County"),
+                         choices = c("Country", "US State", "US County"),
                          inline = T,
-                         selected = "State"),
+                         selected = "Country"),
             
             selectInput(inputId = "geographic_location",
                         label = "Search & Select Geographic Location (multiple selection allowed):",
-                        choices = c("Select regions" = "", NYT_statedata$label),
+                        choices = c("Select regions" = "", countrydata$region),
                         multiple = T
                         ),
             
@@ -99,39 +104,43 @@ ui <- fluidPage(
 server <- function(input, output, clientData, session) {
     
     observe({
-        if(input$datasource == "State") {
-            data <- NYT_statedata
+        if(input$datasource == "Country") {
+            data <- countrydata
+        } else if (input$datasource == "US State") {
+            data <- NYT_statedata 
         } else {
-            data <- NYT_countydata   
+            data <- NYT_countydata
         }
 
         updateSelectInput(session, "geographic_location",
                            label = "Search & Select Geographic Location (multiple selection allowed):",
-                           choices = c("Select regions" = "", unique(data$label)))
+                           choices = c("Select regions" = "", unique(data$region)))
     })
     
     # Subset data to only the county of interest
     data = reactive({
-        if(input$datasource == "State") {
-            data <- NYT_statedata
+        if(input$datasource == "Country") {
+            data <- countrydata
+        } else if (input$datasource == "US State") {
+            data <- NYT_statedata 
         } else {
-            data <- NYT_countydata   
+            data <- NYT_countydata
         }
         
-        data %>%
+       x = data %>%
             arrange(date) %>%
-            group_by_at(setdiff(names(data), c("date", "cases", "deaths", "new.cases"))) %>%
+            group_by_at(setdiff(names(data), c("date", "cases", "deaths", "new.cases", "new_deaths", "total_deaths"))) %>%
             mutate(new.cases_smoothed = ksmooth(date, new.cases, kernel = input$smoothing_kernal, bandwidth = input$smoothing_bandwidth, n.points = n())$y) %>%
             mutate(denominator = head(c(rep(NA, input$reference_date*-1), new.cases_smoothed), input$reference_date)) %>%
-            mutate(denominator = replace(denominator, denominator == 0, 1)) %>%
+            mutate(denominator = replace(denominator, denominator %in% c(0, NaN, NA), 1)) %>%
             ungroup() %>%
             mutate(Rs = new.cases_smoothed/denominator) %>%
-            filter(label %in% input$geographic_location, date >= as.Date(input$dateRange[1]), date <= as.Date(input$dateRange[2]))
+            filter(region %in% input$geographic_location, date >= as.Date(input$dateRange[1]), date <= as.Date(input$dateRange[2]))
     })
     
     output$Plot_TotalCases <- renderPlot({
-        ggplot(data(), aes(date, cases, group = label)) + 
-            geom_line(aes(color = label)) +
+        ggplot(data(), aes(date, cases, group = region)) + 
+            geom_line(aes(color = region)) +
             labs(title = "Total Cases") + 
             theme_pubr() + 
             theme(legend.title = element_blank())
@@ -139,16 +148,16 @@ server <- function(input, output, clientData, session) {
     
     output$Plot_NewCases <- renderPlot({
         ggplot(data()) + 
-            geom_line(aes(date, new.cases, group = label, color = label), alpha=0.75) +
-            geom_line(aes(date, new.cases_smoothed, group = label, color = label), alpha=1, size = 1.5) + 
+            geom_line(aes(date, new.cases, group = region, color = region), alpha=0.75) +
+            geom_line(aes(date, new.cases_smoothed, group = region, color = region), alpha=1, size = 1.5) + 
             labs(title = "New Cases") + 
             theme_pubr() + 
             theme(legend.title = element_blank())
     })
     
     output$Plot_Rstat <- renderPlot({
-        ggplot(data(), aes(date, Rs, group = label)) + 
-            geom_line(aes(color = label)) +
+        ggplot(data(), aes(date, Rs, group = region)) + 
+            geom_line(aes(color = region)) +
             labs(title = "Simplified R estimate") +
             theme_pubr() + 
             theme(legend.title = element_blank())
