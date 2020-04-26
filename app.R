@@ -83,11 +83,11 @@ ui <- fluidPage(
             
             radioButtons(inputId = "smoothing_kernal",
                          label = "Select a smoothing kernal for smoothing new cases per each day:",
-                         choices = c("box", "normal"),
-                         inline = T),
+                         choices = c("box (smooth by taking a regular mean based on neighboring days)", 
+                                     "normal (smooth by taking a gaussian-weighted mean of neighboring days)")),
             
             sliderInput(inputId = "smoothing_bandwidth",
-                        label = "Smoothing Bandwidth:",
+                        label = "Smoothing Bandwidth (number of days to average for smoothing):",
                         min = 1, max = 5, value = 3, step = 1)
         ),
 
