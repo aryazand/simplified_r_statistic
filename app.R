@@ -10,6 +10,7 @@
 library(shiny)
 library(tidyverse)
 library(ggpubr)
+library(RcppRoll)
 
 # ****************
 # Load Data
@@ -30,7 +31,7 @@ NYT_countydata <- NYT_countydata %>%
 NYT_statedata <- NYT_statedata %>% rename(region = state)
 
 countrydata <- countrydata %>% 
-    rename(region = location, new.cases = new_cases, cases = total_cases)
+    rename(region = location, cases = total_cases)
 
 # Calculate new cases for NYT data
 # country data already has new cases is original dataset
@@ -39,7 +40,7 @@ newcases_helperfunction = function(data) {
     data <- data %>%
         group_by_at(setdiff(names(data), c("date", "cases", "deaths"))) %>%
         arrange(date) %>%
-        mutate(new.cases = cases - c(0, cases[-length(cases)])) %>%
+        mutate(new_cases = cases - c(0, cases[-length(cases)])) %>%
         ungroup()
     return(data)
 }
@@ -79,16 +80,22 @@ ui <- fluidPage(
             
             sliderInput(inputId = "reference_date",
                         label = "Select a reference day for calculating Rs:",
-                        min = -5, max = 0, value = -4, step = 1),
+                        min = -7, max = 0, value = -4, step = 1),
             
-            radioButtons(inputId = "smoothing_kernal",
-                         label = "Select a smoothing kernal:",
-                         choices = c("box (smooth new cases of each day by taking mean with neighboring days)" = "box", 
-                                     "normal (smooth new cases of each day by taking a gaussian-weighted mean with neighboring days)" = "normal")),
+            radioButtons(inputId = "smoothing_kernal_align",
+                         label = "Select alignment of day within smoothing window:",
+                         choices = c("center", "right"), 
+                         selected = "right"), 
             
-            sliderInput(inputId = "smoothing_bandwidth",
-                        label = "Smoothing Bandwidth (number of days to average for smoothing):",
-                        min = 1, max = 5, value = 3, step = 1)
+            # I had an idea to weighted vs unweighted smoothing             
+            radioButtons(inputId = "smoothing_kernal_shape",
+                         label = "Weighted or unweighted smoothing",
+                         choices = c("unweighted", "gaussian (sd = 1)"),
+                         selected = "unweighted"),
+                        
+            sliderInput(inputId = "smoothing_window",
+                        label = "Smoothing window (number of days to consider when smoothing):",
+                        min = 1, max = 10, value = 7, step = 1)
         ),
 
         # Plots
@@ -127,14 +134,33 @@ server <- function(input, output, clientData, session) {
             data <- NYT_countydata
         }
         
-       x = data %>%
+        smoothing_function <- function(x, n = input$smoothing_window, align = input$smoothing_kernal_align, shape = input$smoothing_kernal_shape) {
+            
+            if(shape == "unweighted") {
+                weights = NULL
+            } else if (shape == "gaussian" & align == "right") {
+                weights = dnorm((-(n-1):0))
+            } else if (shape == "gaussian" & align == "center") {
+                if(n%%2 == 0) {
+                    weights = dnorm(((-(n/2)+1):(n/2)))    
+                } else {
+                    weights = dnorm(((-(n-1)/2):((n-1)/2)))  
+                }
+            }
+            
+            x.smooth = roll_mean(x, n = n, align = align, weights = weights, fill=c(NA,NA,NA))
+            
+            return(x.smooth)
+        }
+        
+        data %>%
             arrange(date) %>%
-            group_by_at(setdiff(names(data), c("date", "cases", "deaths", "new.cases", "new_deaths", "total_deaths"))) %>%
-            mutate(new.cases_smoothed = ksmooth(date, new.cases, kernel = input$smoothing_kernal, bandwidth = input$smoothing_bandwidth, n.points = n())$y) %>%
-            mutate(denominator = head(c(rep(NA, input$reference_date*-1), new.cases_smoothed), input$reference_date)) %>%
+            group_by_at(setdiff(names(data), c("date", "cases", "deaths", "new_cases", "new_deaths", "total_deaths"))) %>%
+            mutate(new_cases.smoothed = smoothing_function(x = new_cases)) %>%
+            mutate(denominator = head(c(rep(NA, input$reference_date*-1), new_cases.smoothed), input$reference_date)) %>%
             mutate(denominator = replace(denominator, denominator %in% c(0, NaN, NA), 1)) %>%
             ungroup() %>%
-            mutate(Rs = new.cases_smoothed/denominator) %>%
+            mutate(Rs = new_cases.smoothed/denominator) %>%
             filter(region %in% input$geographic_location, date >= as.Date(input$dateRange[1]), date <= as.Date(input$dateRange[2]))
     })
     
@@ -148,8 +174,8 @@ server <- function(input, output, clientData, session) {
     
     output$Plot_NewCases <- renderPlot({
         ggplot(data()) + 
-            geom_line(aes(date, new.cases, group = region, color = region), alpha=0.75) +
-            geom_line(aes(date, new.cases_smoothed, group = region, color = region), alpha=1, size = 1.5) + 
+            geom_line(aes(date, new_cases, group = region, color = region), alpha=0.75) +
+            geom_line(aes(date, new_cases.smoothed, group = region, color = region), alpha=1, size = 1.5) + 
             labs(title = "New Cases") + 
             theme_pubr() + 
             theme(legend.title = element_blank())
