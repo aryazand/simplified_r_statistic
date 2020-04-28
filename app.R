@@ -90,7 +90,7 @@ ui <- fluidPage(
             # I had an idea to weighted vs unweighted smoothing             
             radioButtons(inputId = "smoothing_kernal_shape",
                          label = "Weighted or unweighted smoothing",
-                         choices = c("unweighted", "gaussian (sd = 1)"),
+                         choices = c("unweighted" = "unweighted", "gaussian (sd = 1)" = "gaussian"),
                          selected = "unweighted"),
                         
             sliderInput(inputId = "smoothing_window",
@@ -154,14 +154,14 @@ server <- function(input, output, clientData, session) {
         }
         
         data %>%
+            filter(region %in% input$geographic_location, date >= as.Date(input$dateRange[1]), date <= as.Date(input$dateRange[2])) %>%
             arrange(date) %>%
-            group_by_at(setdiff(names(data), c("date", "cases", "deaths", "new_cases", "new_deaths", "total_deaths"))) %>%
+            group_by(region) %>%
             mutate(new_cases.smoothed = smoothing_function(x = new_cases)) %>%
             mutate(denominator = head(c(rep(NA, input$reference_date*-1), new_cases.smoothed), input$reference_date)) %>%
             mutate(denominator = replace(denominator, denominator %in% c(0, NaN, NA), 1)) %>%
             ungroup() %>%
-            mutate(Rs = new_cases.smoothed/denominator) %>%
-            filter(region %in% input$geographic_location, date >= as.Date(input$dateRange[1]), date <= as.Date(input$dateRange[2]))
+            mutate(Rs = new_cases.smoothed/denominator)
     })
     
     output$Plot_TotalCases <- renderPlot({
@@ -184,7 +184,9 @@ server <- function(input, output, clientData, session) {
     output$Plot_Rstat <- renderPlot({
         ggplot(data(), aes(date, Rs, group = region)) + 
             geom_line(aes(color = region)) +
+            geom_hline(yintercept = 1, linetype = 2) + 
             labs(title = "Simplified R estimate") +
+            scale_y_log10(labels = function(x) format(x, scientific = F)) + 
             theme_pubr() + 
             theme(legend.title = element_blank())
     })
