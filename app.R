@@ -69,15 +69,15 @@ ui <- fluidPage(
         # Have a tab for each plot
         tabsetPanel(type="tabs",
                     tabPanel("Total Cases", 
-                             column(10, plotOutput("Plot_TotalCases", hover = hoverOpts(id ="TotalCases.hover", delay=200))),
+                             column(10, plotOutput("Plot_TotalCases", hover = hoverOpts(id ="TotalCases.hover", delay=50))),
                              column(2, htmlOutput("TotalCases.info"))
                              ),
                     tabPanel("New Cases", 
-                             column(10, plotOutput("Plot_NewCases", hover = hoverOpts(id ="NewCases.hover", delay=200))),
+                             column(10, plotOutput("Plot_NewCases", hover = hoverOpts(id ="NewCases.hover", delay=50))),
                              column(2, htmlOutput("NewCases.info"))
                              ), 
                     tabPanel("R", 
-                             column(10, plotOutput("Plot_Rstat", hover = hoverOpts(id ="R.hover", delay = 200))),
+                             column(10, plotOutput("Plot_Rstat", hover = hoverOpts(id ="R.hover", delay = 50))),
                              column(2, htmlOutput("R.info"))
                              )    
         )
@@ -191,10 +191,18 @@ server <- function(input, output, clientData, session) {
         } else {
             data <- NYT_countydata
         }
+        
+        if(input$datasource == "Country") {
+            updateSelectInput(session, "geographic_location",
+                              label = "Search & Select Geographic Location (multiple selection allowed):",
+                              choices = c("Select regions" = "", unique(data$region)),
+                              selected = "United States")
+        } else {
+            updateSelectInput(session, "geographic_location",
+                              label = "Search & Select Geographic Location (multiple selection allowed):",
+                              choices = c("Select regions" = "", unique(data$region)))
+        }
 
-        updateSelectInput(session, "geographic_location",
-                           label = "Search & Select Geographic Location (multiple selection allowed):",
-                           choices = c("Select regions" = "", unique(data$region)))
     })
     
     # Subset data to only the region and dates of interest
@@ -207,8 +215,7 @@ server <- function(input, output, clientData, session) {
             data <- NYT_countydata
         }
         
-        data <- data %>%
-            filter(region %in% input$geographic_location, date >= as.Date(input$dateRange[1]), date <= as.Date(input$dateRange[2]))
+        data <- data %>% filter(region %in% input$geographic_location)
     }) 
     
     # ***************
@@ -294,25 +301,41 @@ server <- function(input, output, clientData, session) {
     
     # Total Cases
     output$Plot_TotalCases <- renderPlot({
+        dummyTable = data() %>% filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2]))
+        max_y_value = max(dummyTable$total_cases, na.rm = T)*1.1
+        
         ggplot(data(), aes(date, total_cases, group = region)) +
             geom_line(aes(color = region)) +
             labs(y = 'Total Cases') +
-            scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+            scale_x_date(date_breaks = '1 week', date_labels = '%b-%d',
+                         limits=c(as.Date(input$dateRange[1]),  as.Date(input$dateRange[2]))) +
+            scale_y_continuous(labels = function(x) format(x, scientific = F),
+                              limits = c(0, max_y_value)) + 
             custom_plot_theme()
     })
 
     # New Cases
     output$Plot_NewCases <- renderPlot({
+        dummyTable = data() %>% filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2]))
+        max_y_value = max(dummyTable$new_cases, na.rm = T)*1.1
+        
         ggplot(data()) + 
             geom_line(aes(date, new_cases, group = region, color = region), alpha=0.75) +
             geom_line(aes(date, new_cases.smoothed, group = region, color = region), alpha=1, size = 1.5) + 
             labs(y = "New Cases") +
-            scale_x_date(date_breaks = "1 week", date_labels = "%b-%d") +
+            scale_x_date(date_breaks = '1 week', date_labels = '%b-%d',
+                         limits=c( as.Date(input$dateRange[1]),  as.Date(input$dateRange[2]))) +
+            ylim(0, max_y_value) + 
             custom_plot_theme() 
     })
     
     # R estimate
+    
     output$Plot_Rstat <- renderPlot({
+        dummyTable = data() %>% filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2]))
+        dummyTable2 = data.epiestim() %>% filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2]))
+        max_y_value = max(dummyTable$Rs, dummyTable2$`Quantile.0.975(R)`,na.rm=T)*1.1
+        
         ggplot(data()) + 
             geom_line(aes(x = date, y = Rs, color = region, group = region)) +
             geom_ribbon(data = data.epiestim(), aes(x = date,  ymin=`Quantile.0.025(R)`,ymax=`Quantile.0.975(R)`, group = region, fill = region), alpha=0.15)+
@@ -322,7 +345,9 @@ server <- function(input, output, clientData, session) {
             geom_hline(yintercept = 1, linetype = 2) + 
             labs(subtitle = "dotted lines give R estimation from EpiEstim with a 95% CI") +
             labs(y = "R estimate") +
-            scale_x_date(date_breaks = "1 week", date_labels = "%b-%d") +
+            scale_x_date(date_breaks = '1 week', date_labels = '%b-%d',
+                         limits=c(as.Date(input$dateRange[1]),  as.Date(input$dateRange[2]))) +
+            ylim(0, max_y_value) + 
             custom_plot_theme()
     })
     
@@ -336,19 +361,38 @@ server <- function(input, output, clientData, session) {
         data = data()
 
         if(nrow(data) > 1 & !is.null(input$TotalCases.hover)) {
-            dates = seq(min(data$date), max(data$date), "days")
-            cases = seq(min(data$total_cases), max(data$total_cases), length.out = 100)
+            max_y_value = data %>% 
+                filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2])) %>%
+                .$total_cases %>%
+                max(na.rm=T)
+            
+            dates = seq(as.Date(input$dateRange[1])-5, as.Date(input$dateRange[2])+5, "days")
+            cases = seq(-1, max_y_value*1.1, length.out = 1000)
 
 
             dummytable = data.frame(
-                date = rep(dates, 100),
+                date = rep(dates, 1000),
                 total_cases = rep(cases, each=length(dates))
             )
 
             nearPoint <- nearPoints(dummytable, input$TotalCases.hover, threshold = 10, maxpoints = 1)
 
-            closedata = data() %>% filter(date == nearPoint$date) %>% select(date, region, total_cases) %>% unite("printstring", sep=", ")
-            HTML(paste(closedata$printstring, "<br/>"))
+            closedata = data() %>% filter(date == nearPoint$date) %>% select(date, region, total_cases)
+            
+            date_title = paste0("Date ", closedata$date[1], "<br/>")
+            parameters = c("Total Cases")
+            create_str_func = function(df.row) {
+                title = df.row["region"]
+                df.row = as.character(df.row[!(names(df.row) %in% c("region", "date"))])
+                info = paste0(paste0(parameters, ".....", df.row, "<br/>"), collapse="")
+                info = paste0("<strong>", title, "</strong>", "<br/>", info, "<br/>")
+                return(info)
+            }
+            
+            output_strings = apply(closedata, 1, create_str_func)
+            
+            HTML(paste0(c(date_title, output_strings), collapse=""))
+            
         } else {
          NULL
         }
@@ -358,19 +402,37 @@ server <- function(input, output, clientData, session) {
         data = data()
         
         if(nrow(data) > 1 & !is.null(input$NewCases.hover)) {
-            dates = seq(min(data$date), max(data$date), "days")
-            cases = seq(min(data$new_cases), max(data$new_cases), length.out = 100)
+            max_y_value = data %>% 
+                filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2])) %>%
+                .$new_cases %>%
+                max(na.rm=T)
+            
+            dates = seq(as.Date(input$dateRange[1])-5, as.Date(input$dateRange[2])+5, "days")
+            cases = seq(-1, max_y_value*1.1, length.out = 1000)
             
             
             dummytable = data.frame(
-                date = rep(dates, 100),
+                date = rep(dates, 1000),
                 new_cases = rep(cases, each=length(dates))
             )
             
             nearPoint <- nearPoints(dummytable, input$NewCases.hover, threshold = 10, maxpoints = 1)
             
-            closedata = data() %>% filter(date == nearPoint$date) %>% select(date, region, new_cases) %>% unite("printstring", sep=", ")
-            HTML(paste(closedata$printstring, "<br/>"))
+            closedata = data() %>% filter(date == nearPoint$date) %>% select(date, region, new_cases, new_cases.smoothed)
+            
+            date_title = paste0("Date ", closedata$date[1], "<br/>")
+            parameters = c("Raw New Cases", "Smoothed New Cases")
+            create_str_func = function(df.row) {
+                title = df.row["region"]
+                df.row = as.character(df.row[!(names(df.row) %in% c("region", "date"))])
+                info = paste0(paste0(parameters, ".....", df.row, "<br/>"), collapse="")
+                info = paste0("<strong>", title, "</strong>", "<br/>", info, "<br/>")
+                return(info)
+            }
+            
+            output_strings = apply(closedata, 1, create_str_func)
+            
+            HTML(paste0(c(date_title, output_strings), collapse=""))
         } else {
             NULL
         }
@@ -381,12 +443,24 @@ server <- function(input, output, clientData, session) {
         data.epiestim = data.epiestim()
         
         if(nrow(data) > 1 & !is.null(input$R.hover)) {
-            dates = seq(min(data$date)-5, max(data$date)+5, "days")
-            cases = seq(0, max(c(data$Rs, data.epiestim$`Quantile.0.975(R)`), na.rm=T)+1, length.out = 100)
+            max_y_value_1 = data %>% 
+                filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2])) %>%
+                .$Rs %>%
+                max(na.rm=T)
+            
+            max_y_value_2 = data.epiestim %>% 
+                filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2])) %>%
+                .$`Quantile.0.975(R)` %>%
+                max(na.rm=T)
+            
+            max_y_value = max(max_y_value_1, max_y_value_2, na.rm=T)
+            
+            dates = seq(as.Date(input$dateRange[1])-5, as.Date(input$dateRange[2])+5, "days")
+            cases = seq(-1, max_y_value*1.1, length.out = 1000)
             
             
             dummytable = data.frame(
-                date = rep(dates, 100),
+                date = rep(dates, 1000),
                 Rs = rep(cases, each=length(dates))
             )
             
