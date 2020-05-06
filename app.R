@@ -69,8 +69,13 @@ ui <- fluidPage(
         # Have a tab for each plot
         tabsetPanel(type="tabs",
                     tabPanel("Total Cases", 
-                             column(10, plotOutput("Plot_TotalCases", hover = hoverOpts(id ="TotalCases.hover", delay=50))),
+                             column(10, plotOutput("Plot_TotalCases", 
+                                                   hover = hoverOpts(id ="TotalCases.hover", delay=50))#,
+                                                   # dblclick = "TotalCases.dblclk",
+                                                   # brush = brushOpts(id = "TotalCases.brush", resetOnNew = TRUE)
+                                    ),
                              column(2, htmlOutput("TotalCases.info"))
+                             
                              ),
                     tabPanel("New Cases", 
                              column(10, plotOutput("Plot_NewCases", hover = hoverOpts(id ="NewCases.hover", delay=50))),
@@ -299,20 +304,61 @@ server <- function(input, output, clientData, session) {
         )
     }
     
-    # Total Cases
-    output$Plot_TotalCases <- renderPlot({
-        dummyTable = data() %>% filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2]))
-        max_y_value = max(dummyTable$total_cases, na.rm = T)*1.1
+    function_to_zoom <- function(brush, ranges) {
         
-        ggplot(data(), aes(date, total_cases, group = region)) +
-            geom_line(aes(color = region)) +
-            labs(y = 'Total Cases') +
-            scale_x_date(date_breaks = '1 week', date_labels = '%b-%d',
-                         limits=c(as.Date(input$dateRange[1]),  as.Date(input$dateRange[2]))) +
-            scale_y_continuous(labels = function(x) format(x, scientific = F),
-                              limits = c(0, max_y_value)) + 
-            custom_plot_theme()
+        # Code from: https://shiny.rstudio.com/gallery/plot-interaction-zoom.html
+        
+        if (!is.null(brush)) {
+            ranges$x <- c(brush$xmin, brush$xmax)
+            ranges$y <- c(brush$ymin, brush$ymax)
+            
+        } else {
+            ranges$x <- NULL
+            ranges$y <- NULL
+        }
+    }
+    
+    # Total Cases
+    TotalCases.ranges <- reactiveValues(x = NULL, y = NULL)
+    output$Plot_TotalCases <- renderPlot({
+        
+        if(is.null(TotalCases.ranges)) { 
+            dummyTable = data() %>% filter(date >= as.Date(input$dateRange[1]) & date <= as.Date(input$dateRange[2]))
+            max_y_value = max(dummyTable$total_cases, na.rm = T)*1.1
+            
+            ggplot(data(), aes(date, total_cases, group = region)) +
+                geom_line(aes(color = region)) +
+                labs(y = 'Total Cases') +
+                scale_x_date(date_breaks = '1 week', date_labels = '%b-%d',
+                             limits=c(as.Date(input$dateRange[1]),  as.Date(input$dateRange[2]))) +
+                scale_y_continuous(labels = function(x) format(x, scientific = F),
+                                   limits = c(0, max_y_value)) + 
+                custom_plot_theme()
+        } else {
+            ggplot(data(), aes(date, total_cases, group = region)) +
+                geom_line(aes(color = region)) +
+                labs(y = 'Total Cases') +
+                scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') + 
+                scale_y_continuous(labels = function(x) format(x, scientific = F)) + 
+                coord_cartesian(xlim = Plot_TotalCases$x, ylim = Plot_TotalCases$y, expand = FALSE)
+                custom_plot_theme()
+        }
     })
+    
+    # #observeEvent(input$TotalCases.dblclk, {
+    #     brush = input$TotalCases.brush
+    #     if (!is.null(brush)) {
+    #         TotalCases.ranges$x <- c(brush$xmin, brush$xmax)
+    #         TotalCases.ranges$y <- c(brush$ymin, brush$ymax)
+    #         
+    #     } else {
+    #         TotalCases.ranges$x <- NULL
+    #         TotalCases.ranges$y <- NULL
+    #     }
+    #   #  function_to_zoom(input$TotalCases.brush, TotalCases.ranges)
+    # })
+    
+    
 
     # New Cases
     output$Plot_NewCases <- renderPlot({
