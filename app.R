@@ -58,8 +58,27 @@ NYT_statedata <- newcases_helperfunction(NYT_statedata)
 # Define UI for application that draws a histogram
 ui <- fluidPage(
 
+    # *************
+    # Title and Description
+    # *************
+    
     # Application title
     titlePanel("R Estimator"),
+    
+    # Description
+    fluidRow(
+        tags$p("Here we show the performance of a simple calculation of the effective reproduction number ('R') using the 
+               current SARS-CoV-2 as an example. The calculation is simply the ratio of incidence today to the incidence
+               D days ago, where D is the serial/generation interval."),
+        tags$b("The numbers here should not be interpreted as true R values for the current SARS-CoV-2 pandemic.", style="color:red"),
+        tags$span("Rather, we are assessing if the simplified method of estimating R approximates more standard methods of estimating R. 
+                    In conducting these calculations, we make assumptions and use parameters (which you can control below). We haven't 
+                    assessed whether those assumptions/parameters are consistent with the reality of the SARS-CoV-2 pandemic. Data sources 
+                    include New York Times, covid.ourworldindata.org. Currently we are comparing the simplified R calculation to that 
+                    produce by the EpiEstim package ("),
+        tags$a("https://cran.r-project.org/web/packages/EpiEstim/index.html"),
+        tags$span(").")
+    ),
     
     # *************
     # Plots
@@ -141,7 +160,7 @@ ui <- fluidPage(
                 tags$h3("Simplified R Calculation Parameters"),
                 
                 sliderInput(inputId = "reference_date",
-                            label = "Select a reference day for calculating Rs:",
+                            label = "Serial/Generation Interval (days):",
                             min = -7, max = 0, value = -4, step = 1),
                 
                 radioButtons(inputId = "smoothing_kernal_align",
@@ -171,11 +190,11 @@ ui <- fluidPage(
                   tags$h3("EpiEstim R Calculation Parameters"),
                   
                   sliderInput(inputId = "Epiestim.mean_si",
-                              label = "Mean days between onset of symptoms and positive test",
+                              label = "Mean Serial/Generation Interval (days)",
                               min = 1, max = 10, value = 4, step = 1),
                   
                   sliderInput(inputId = "Epiestim.std_si",
-                              label = "Standard Deviation in days between onset of symptoms and positive test",
+                              label = "Standard Deviation of Serial/Generation Interval (days)",
                               min = 1, max = 10, value = 1, step = 1),
                   
                   sliderInput(inputId = "Epiestim.window_size",
