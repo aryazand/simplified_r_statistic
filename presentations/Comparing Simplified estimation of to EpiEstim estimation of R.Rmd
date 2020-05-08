@@ -1,0 +1,25 @@
+---
+title: "Comparing Simplified estimation of R to EpiEstim estimation of R"
+author: "Arya Zandvakili"
+date: "5/7/2020"
+output:
+  pdf_document: default
+  html_document: default
+urlcolor: blue
+---
+
+EpiEstim is an R package ("R" referring to the coding package, that has nothing to do with the reproduction number) for estimating the effective reproduction number that was developed by Cori et al, 2013 (<https://academic.oup.com/aje/article/178/9/1505/89262>). My understanding (from reading the primary article and its supplement) is that they use a Bayesian approach and estimate R as gamma-distributed:
+
+$$ R_t \sim \Gamma(a + \sum_{s=t-\tau+1}^{t} I_s, \frac{1}{\frac{1}{b} + \sum_{s=t-\tau+1}^{t} I_sw_s})$$
+
+$$ mean(R_t) = \frac{a + \sum_{s=t-\tau+1}^{t} I_s}{\frac{1}{b} + \sum_{s=t-\tau+1}^{t} I_sw_s}$$
+
+where $I_s$ is the number of new cases at time s, $\tau$ is the window size (i.e. in our case, we chose 7 as default), and $w_s$ is a probability distribution of how infectious individuals are at time $t$ given that they were infected $t-s$ days ago (i.e. this is the probability distribution of the serial interval). Also, $a$, and $b$ are the parameters for the Gamma prior distributions (default is $a$ = 1, and $b$ = 5, or in other words the prior mean and standard deviation for $R_t$ are 5 and 5, respectively). 
+
+In comparison, the simplified calculation for the reproduction number at time $t$ is: 
+
+$$ R_t^s = \frac{\sum_{s=t-\tau+1}^{t} I_s}{\sum_{s=t-\tau+1-D}^{t-D} I_s} $$
+
+where $D$ is the estimated serial interval (or generation interval). 
+
+Therefore, it seems to me that $R_t^S$ approximates $R_t$ so long as $\sum I_s >> a$ and the majority of the mass of the $w_s$ is at $D$. This is consistent with what we see in the web-app: $R_t^S$ and $R_t$ converge as the number of new cases per day increases, and in the EpiEstim controls we set the mean serial interval to equal D and we keep the standard deviation of the serial interval low. 
