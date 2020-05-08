@@ -4,5 +4,5 @@
 .Ruserdata
 ./rsconnect/*
 rsconnect
-./presentation/*.pdf
-./presentation/*.html
+presentation/*.pdf
+presentation/*.html
