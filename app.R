@@ -67,7 +67,7 @@ ui <- fluidPage(
     
     # Description
     fluidRow(
-        tags$p("Here we show the performance of a simple calculation of the effective reproduction number ('R') using the 
+        tags$span("Here we show the performance of a simple calculation of the effective reproduction number ('R') using the 
                current SARS-CoV-2 as an example. The calculation is simply the ratio of incidence today to the incidence
                D days ago, where D is the serial/generation interval."),
         tags$b("The numbers here should not be interpreted as true R values for the current SARS-CoV-2 pandemic.", style="color:red"),
@@ -77,7 +77,13 @@ ui <- fluidPage(
                     include New York Times, covid.ourworldindata.org. Currently we are comparing the simplified R calculation to that 
                     produce by the EpiEstim package ("),
         tags$a("https://cran.r-project.org/web/packages/EpiEstim/index.html"),
-        tags$span(").")
+        tags$span(")."),
+        tags$br(),
+        tags$br(),
+        tags$strong("How to use:"),
+        tags$p("There are 3 graphs (Total Cases, New Cases, and R). Hovering over the graphs gives information about the date (to the right). 
+               To zoom into an area of interest, click and drag your mouse over that area and then double click. Double-click again to 
+               zoom-out. Modify the parameters below to change geographic region, dates, and parameters for calculating R.")
     ),
     
     # *************
@@ -161,7 +167,7 @@ ui <- fluidPage(
                 
                 sliderInput(inputId = "reference_date",
                             label = "Serial/Generation Interval (days):",
-                            min = -7, max = 0, value = -4, step = 1),
+                            min = 1, max = 10, value = 4, step = 1),
                 
                 radioButtons(inputId = "smoothing_kernal_align",
                              label = "Select alignment of day within smoothing window:",
@@ -280,7 +286,7 @@ server <- function(input, output, clientData, session) {
             arrange(date) %>%
             group_by(region) %>%
             mutate(new_cases.smoothed = smoothing_function(x = new_cases)) %>%
-            mutate(denominator = head(c(rep(NA, input$reference_date*-1), new_cases.smoothed), input$reference_date)) %>%
+            mutate(denominator = head(c(rep(NA, input$reference_date), new_cases.smoothed), input$reference_date*-1)) %>%
             mutate(denominator = replace(denominator, denominator %in% c(0, NaN, NA), 1)) %>%
             ungroup() %>%
             mutate(Rs = new_cases.smoothed/denominator)
@@ -311,7 +317,10 @@ server <- function(input, output, clientData, session) {
             mutate(EpiEstim = map(EpiEstim, function(i) i$R)) %>%
             mutate(date = map(CD, function(i) i$date)) %>%
             mutate(date = map(date, function(i) tail(i, -(input$Epiestim.window_size)))) %>%
+            mutate(total_cases = map(CD, function(i) i$total_cases)) %>%
+            mutate(total_cases = map(total_cases, function(i) tail(i, -(input$Epiestim.window_size)))) %>%
             mutate(EpiEstim = map2(EpiEstim, date, function(i,j) mutate(i, date = j))) %>%
+            mutate(EpiEstim = map2(EpiEstim, total_cases, function(i,j) mutate(i, total_cases = j))) %>%
             select(region, EpiEstim) %>%
             unnest(EpiEstim)
     })
@@ -365,7 +374,7 @@ server <- function(input, output, clientData, session) {
     # New Cases
     NewCases.ranges <- reactiveValues(x = NULL, y = NULL)
     Plot_NewCases <- reactive({(
-        ggplot(data()) + 
+        ggplot() + 
             geom_line(aes(date, new_cases, group = region, color = region), alpha=0.75) +
             geom_line(aes(date, new_cases.smoothed, group = region, color = region), alpha=1, size = 1.5) + 
             labs(y = "New Cases") +
@@ -380,19 +389,41 @@ server <- function(input, output, clientData, session) {
     
     # R estimate
     R.ranges <- reactiveValues(x = NULL, y = NULL)
+    warning_annotation <- reactive({
+        if(input$Epiestim.mean_si != input$reference_date) {
+            warning_annotation = "Warning: Serial Interval are not the same for Simple R and EpiEstim R calcualtions!"
+        } else {
+            warning_annotation = NULL
+        }
+    }) 
+    
     Plot_Rstat <- reactive({
-        ggplot(data()) + 
+        data = data() %>% group_by(region) %>% filter(total_cases > 11)
+        data.epiestim = data.epiestim() %>% group_by(region) %>% filter(total_cases > 11)
+        
+        p <- ggplot(data) + 
             geom_line(aes(x = date, y = Rs, color = region, group = region)) +
-            geom_ribbon(data = data.epiestim(), aes(x = date,  ymin=`Quantile.0.025(R)`,ymax=`Quantile.0.975(R)`, group = region, fill = region), alpha=0.15)+
-            geom_line(data = data.epiestim(), aes(x = date, y=`Mean(R)`, group = region, color = region), linetype = 2) +
-            geom_line(data = data.epiestim(), aes(x = date, y=`Quantile.0.025(R)`, group = region, color = region), linetype = 2) +
-            geom_line(data = data.epiestim(), aes(x = date, y=`Quantile.0.975(R)`, group = region, color = region), linetype = 2) +
+            geom_ribbon(data = data.epiestim, aes(x = date,  ymin=`Quantile.0.025(R)`,ymax=`Quantile.0.975(R)`, group = region, fill = region), alpha=0.15)+
+            geom_line(data = data.epiestim, aes(x = date, y=`Mean(R)`, group = region, color = region), linetype = 2) +
+            geom_line(data = data.epiestim, aes(x = date, y=`Quantile.0.025(R)`, group = region, color = region), linetype = 2) +
+            geom_line(data = data.epiestim, aes(x = date, y=`Quantile.0.975(R)`, group = region, color = region), linetype = 2) +
             geom_hline(yintercept = 1, linetype = 2) + 
             labs(subtitle = "dotted lines give R estimation from EpiEstim with a 95% CI") +
             labs(y = "R estimate") +
             scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') + 
             coord_cartesian(xlim = R.ranges$x, ylim = R.ranges$y, expand = FALSE) + 
             custom_plot_theme()
+        
+        if(!is.null(R.ranges$y) & !is.null(R.ranges$x)) {
+            annotation.y = R.ranges$y[2]*0.9
+            annotation.x = R.ranges$x[1]+1
+        } else {
+            annotation.y = max(c(data$Rs, data.epiestim$`Quantile.0.975(R)`), na.rm=T)*0.9
+            annotation.x = as.Date(input$dateRange[1])
+            print(annotation.y)
+        }
+        p + annotate(geom = "label", x = annotation.x, y = annotation.y, label = warning_annotation(), hjust = 0, color="red")
+
     })
     output$Plot_Rstat <- renderPlot({
         Plot_Rstat()
