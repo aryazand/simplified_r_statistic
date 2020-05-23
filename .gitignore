@@ -6,4 +6,4 @@
 rsconnect
 presentation/*.pdf
 presentation/*.html
-./simplified_r_statistic/case_data.csv
+simplified_r_statistic/case_data.csv
