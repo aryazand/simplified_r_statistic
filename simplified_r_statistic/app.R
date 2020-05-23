@@ -231,7 +231,7 @@ server <- function(input, output, clientData, session) {
                 R_Quantile_975 = qnorm(0.975, mean = R_mean, sd = R_sd)
                 
                 df = data.frame(
-                    date = dates - var_tau,
+                    date = dates - var_D,
                     R_mean,
                     R_Quantile_025,
                     R_Quantile_975
@@ -482,42 +482,59 @@ server <- function(input, output, clientData, session) {
             # Get mean lower and upper bounds of R estimates
             Rmax = data_subset %>%
                 dplyr::select(contains("R_Quantile_975")) %>% 
-                map_dbl(., mean, na.rm=T) %>% mean(., na.rm=T) %>%
-                round(.,2)
+                unlist()
             
             Rmin = data_subset %>%
-                dplyr::select(contains("R_Quantile_025")) %>% 
-                map_dbl(., mean, na.rm=T) %>% mean(., na.rm=T) %>%
-                round(.,2)
+                dplyr::select(contains("R_Quantile_025")) %>%
+                unlist()
             
-            if(Rmin < 0 ) {
-                Rmin = 0
-            }
+            Rmean = data_subset %>%
+                dplyr::select(contains("R_mean")) %>%
+                unlist()
+            
+            Rmin = replace(Rmin, which(Rmin < 0), 0)
+            Rmin = Rmin[!is.na(Rmin)]
+            Rmax = replace(Rmax, which(Rmax < 0), 0)
+            Rmax = Rmax[!is.na(Rmax)]
+            Rmean = replace(Rmax, which(Rmean < 0), 0)
+            Rmean = Rmean[!is.na(Rmean)]
+            
+            R_range = c(Rmin, Rmax, Rmean)
+            R_range = summary(R_range) %>% as.numeric()
+            R_range = rev(R_range[-4])
+            
+            Rmin = min(R_range, na.rm=T) %>% round(2)
+            Rmax = max(R_range, na.rm=T) %>% round(2)
             
             # Assing colors to mean upper and lower bounds 
-            if(Rmin > 1) {
-                min_color = "255,0,0"
-            } else if (Rmin < 0.95) {
-                min_color = "0,255,0"
-            } else {
-                min_color = "255,255,0"
+            color_assignment_function = function(x) {
+                if(x > 1) {
+                    x = "255,0,0"
+                } else if (x < 0.95) {
+                    x = "0,255,0"
+                } else {
+                    x = "255,255,0"
+                }
+                return(x)
             }
             
-            if(Rmax > 1) {
-                max_color = "255,0,0"
-            } else if (Rmax < 0.95) {
-                max_color = "0,255,0"
-            } else {
-                max_color = "255,255,0"
-            }
+            R_range.colors = map_chr(R_range, color_assignment_function)
+           
+            R_range.position = seq(0, 100, length.out = length(R_range))
+            gradient_style = paste(
+                "<stop offset='", R_range.position, "%' style='stop-color:rgb(", R_range.colors, ");stop-opacity:1' />",
+            sep="", collapse=" ")
             
+            print(data.frame(R_range, R_range.colors))
+            print(gradient_style)
             score_cards[i] = 
 
                 paste("<svg height='125' width='125'>",
                         "<defs>",
                             "<linearGradient id='grad", i,"' gradientTransform='rotate(90)'>",
-                              "<stop offset='0%' style='stop-color:rgb(", max_color, ");stop-opacity:1' />",
-                              "<stop offset='100%' style='stop-color:rgb(", min_color,");stop-opacity:1' />",
+                              # "<stop offset='0%' style='stop-color:rgb(", max_color, ");stop-opacity:1' />",
+                              # "<stop offset='100%' style='stop-color:rgb(", min_color,");stop-opacity:1' />",
+                                gradient_style,
                             "</linearGradient>",
                         "</defs>",
                         "<rect width='125' height='125' rx='15' fill='url(#grad",i,")' />",
@@ -530,7 +547,6 @@ server <- function(input, output, clientData, session) {
          }
          
          score_cards = paste(score_cards, collapse=" ")
-         print(score_cards)
          HTML(score_cards)
     })
     
