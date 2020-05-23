@@ -37,7 +37,7 @@ DATA = DATA %>%
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
-
+    
     # *************
     # Title and Description
     # *************
@@ -58,12 +58,9 @@ ui <- fluidPage(
     # ---------------
     # Controls
     # ---------------
-    fluidRow(
-        
+    
     column(3,
         wellPanel(
-            
-            tags$h3("Simple Controls"),
             
             selectInput(inputId = "geographic_location",
                         label = "Search & Select Geographic Location (multiple selection allowed):",
@@ -73,69 +70,80 @@ ui <- fluidPage(
             
             dateRangeInput(inputId = "dateRange",
                            label = "select dates",
-                           start = "2020-02-01",
+                           start = Sys.Date() - 56,
                            end = Sys.Date())
         ), 
-        
-        fixedRow(
-            verbatimTextOutput("Plot_Info")
-        ),
-    
-    ), 
 
-    
+        wellPanel(
+            
+            tags$h4("Smooth Daily New Cases"),
+            
+            sliderInput(inputId = "smoothing_window",
+                        label = "Smoothing Window Size",
+                        min = 4, max = 14, value = 7, step = 1),
+            
+            tags$h4("Parameters for R calculation"),
+            
+            tags$head(
+                tags$style(
+                    HTML(".checkbox-inline {margin-left: 0px; margin-right: 10px;}
+                          .checkbox-inline+.checkbox-inline {margin-left: 0px; margin-right: 10px;}"
+                         )
+                ) 
+            ),
+            
+            checkboxGroupInput(inputId = "R_type", 
+                               label = "Select Method of R Calculation",
+                               choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)", "RKI (2020)"),
+                               choiceValues = c("KN", "Cori", "TD", "RKI"),
+                               inline = T,
+                               selected = "KN"),
+            
+            sliderInput(inputId = "var.si_mean",
+                        label = "Mean Serial Interval (days)",
+                        min = 1, max = 10, value = 4, step = 1),
+            
+            sliderInput(inputId = "var.si_sd",
+                        label = "Standard Deviation of Serial Interval (days)",
+                        min = 1, max = 10, value = 3, step = 1),
+            
+            sliderInput(inputId = "var.window_size",
+                        label = "Window Size",
+                        min = 2, max = 14, value = 7, step = 1)
+        )
+    ),
+
     # -------------
     # Plots
     # -------------
-    
-
     column(6,
-        fixedRow(
-            plotOutput("plot_R",
-                 hover = hoverOpts(id ="plot_R.hover", delay=50, delayType = "debounce"),
-                 dblclick = "plot_R.dblclk",
-                 brush = brushOpts(id = "plot_R.brush", resetOnNew = TRUE)
+        
+        plotOutput("plot_R", height="400px",
+             hover = hoverOpts(id ="plot_R.hover", delay=50, delayType = "debounce"),
+             dblclick = "plot_R.dblclk",
+             brush = brushOpts(id = "plot_R.brush", resetOnNew = TRUE)
+        ),
+
+        fluidRow(
+            tags$b("Select data to display on secondary plot"),
+            splitLayout(cellWidths = c("15%", "15%"),
+                actionLink("button_TotalCases", "Total Cases"),
+                actionLink("button_NewCases", "New Cases")
             )
         ),
         
-        fixedRow(
-            htmlOutput("Score_Card")
-        )
+        plotOutput("secondary_plot")
     ),
     
     column(3, 
-           wellPanel(
-               tags$h3("Advanced Controls"),
-               
-               tags$h4("Smooth Daily New Cases"),
-               
-               sliderInput(inputId = "smoothing_window",
-                           label = "Smoothing Window Size",
-                           min = 4, max = 14, value = 7, step = 1),
-               
-               tags$h4("Parameters for R calculation"),
-               
-               checkboxGroupInput(inputId = "R_type", 
-                                  label = "Select Method of R Calculation",
-                                  choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)", "RKI (2020)"),
-                                  choiceValues = c("KN", "Cori", "TD", "RKI"),
-                                  inline = F,
-                                  selected = "KN"),
-               
-               sliderInput(inputId = "var.si_mean",
-                           label = "Mean Serial Interval (days)",
-                           min = 1, max = 10, value = 4, step = 1),
-               
-               sliderInput(inputId = "var.si_sd",
-                           label = "Standard Deviation of Serial Interval (days)",
-                           min = 1, max = 10, value = 3, step = 1),
-               
-               sliderInput(inputId = "var.window_size",
-                           label = "Window Size",
-                           min = 2, max = 14, value = 7, step = 1)
-           )
-    )
-    
+           
+       fixedRow(
+           htmlOutput("Score_Card")
+       ),
+       
+       fixedRow(
+           verbatimTextOutput("Plot_Info")
+       )
     )
     
 )   
@@ -150,14 +158,14 @@ server <- function(input, output, clientData, session) {
     # Update Data
     # ----------
     
-    data_subset <- reactive({
-        data_subset <- DATA %>% 
+    data <- reactive({
+        data <- DATA %>% 
             filter(region %in% input$geographic_location) %>%
             mutate(region = factor(region, levels=c(input$geographic_location))) %>%
             filter(!is.na(start_date))
         
-        if(nrow(data_subset) == 0) {
-            data_subset <- DATA %>% filter(region == "World")
+        if(nrow(data) == 0) {
+            data <- DATA %>% filter(region == "World")
         }
         #---------------------
         # Establish Parameters
@@ -170,14 +178,14 @@ server <- function(input, output, clientData, session) {
         # Smooth Data
         #----------------------
         
-        data_subset = data_subset %>%
+        data = data %>%
             group_by(region, region_type, regionID, regionID_type) %>%
             mutate(new_cases_smoothed = roll_mean(new_cases, n = input$smoothing_window, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
             ungroup()
         
-        data_subset$new_cases_smoothed[is.na(data_subset$new_cases_smoothed) & data_subset$new_cases > 0] = data_subset$new_cases[is.na(data_subset$new_cases_smoothed) & data_subset$new_cases > 0]
+        data$new_cases_smoothed[is.na(data$new_cases_smoothed) & data$new_cases > 0] = data$new_cases[is.na(data$new_cases_smoothed) & data$new_cases > 0]
         
-        data_subset = data_subset %>% filter(!is.na(new_cases_smoothed))
+        data = data %>% filter(!is.na(new_cases_smoothed))
         #---------------------------------
         # Calculate R by published methods
         #---------------------------------
@@ -223,7 +231,7 @@ server <- function(input, output, clientData, session) {
                 R_Quantile_975 = qnorm(0.975, mean = R_mean, sd = R_sd)
                 
                 df = data.frame(
-                    date = dates,
+                    date = dates - var_tau,
                     R_mean,
                     R_Quantile_025,
                     R_Quantile_975
@@ -238,7 +246,7 @@ server <- function(input, output, clientData, session) {
                 R_Quantile_975 = qnorm(0.975, mean = R_mean, sd = R_sd)
                 
                 df = data.frame(
-                    date = dates - var_tau,
+                    date = dates - var_D,
                     R_mean,
                     R_Quantile_025,
                     R_Quantile_975
@@ -254,7 +262,7 @@ server <- function(input, output, clientData, session) {
             return(df)
         }
     
-        data_subset <- data_subset %>%
+        data <- data %>%
             arrange(date) %>%
             group_by(region, region_type, regionID, regionID_type) %>%
             nest(CD = -c(region, region_type, regionID, regionID_type)) %>%
@@ -272,7 +280,7 @@ server <- function(input, output, clientData, session) {
     })
     
     # ------------
-    # Render Plot
+    # Render R Estimation Plot
     # ------------
     
     # custom function to zoom in plot
@@ -312,7 +320,7 @@ server <- function(input, output, clientData, session) {
     
     
     plot_R <- reactive({
-        data = data_subset()
+        data = data()
         
         data = data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
         
@@ -320,12 +328,24 @@ server <- function(input, output, clientData, session) {
         if(nrow(data) < 1) {
             warning("select geographic location")
         } else {
+            
+            if(is.null(plot_R.ranges$y[2])) {
+                ymax = data %>% dplyr::select(contains(input$R_type)) %>%
+                    map_dbl(., max, na.rm=T) %>% max(., na.rm=T)
+                ymax = ymax*1.1
+                
+                if (ymax < 1.5) {
+                    ymax = 1.5
+                }
+            } else {
+                ymax = plot_R.ranges$y[2]
+            }
 
             p = ggplot(data = data) +
                 geom_hline(yintercept = 1, linetype = 2) +
                 labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
                 scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
-                coord_cartesian(xlim = plot_R.ranges$x, ylim = plot_R.ranges$y, expand = FALSE) +
+                coord_cartesian(xlim = plot_R.ranges$x, ylim = c(0.5, ymax), expand = FALSE) +
                 custom_plot_theme() +
                 theme(axis.text.x = element_text(angle=45, hjust=1))    
             
@@ -340,23 +360,113 @@ server <- function(input, output, clientData, session) {
 
                 p = p +
                     geom_ribbon(aes_string(x = "date",  ymin=ymin,ymax=ymax, group = "region", fill = "region"), alpha=0.15) +
-                    geom_line(aes_string(x = "date", y = y, color = "region", group = "region"), linetype = l)
+                    geom_line(aes_string(x = "date", y = y, color = "region", group = "region"), linetype = l, size =1.25)
             }
 
             return(p)
         }
     })
-        
+    
     output$plot_R = renderPlot({plot_R()})
     
+    # ------------
+    # Render Total Cases Plot
+    # ------------
+    
+    # Ref: https://5harad.com/mse125/r/visualization_code.html
+    addUnits <- function(n) {
+        labels <- ifelse(n < 1000, n,  # less than thousands
+                         ifelse(n < 1e6, paste0(round(n/1e3), 'k'),  # in thousands
+                                ifelse(n < 1e9, paste0(round(n/1e6), 'M'),  # in millions
+                                       ifelse(n < 1e12, paste0(round(n/1e9), 'B'), # in billions
+                                              'too big!'
+                                       ))))
+        return(labels)
+    }
+    
+    plot_TotalCases <- reactive({
+        
+        data = data() %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
+        
+        data = data %>% split(f = data$INTERPROLATED)
+        
+        #Identify breaks in data
+        ID_breaks_in_data <- function(df) {
+            # from https://stackoverflow.com/questions/14821064/line-break-when-no-data-in-ggplot2
+            idx <- c(1, diff(df$date))
+            i2 <- c(1,which(idx != 1), nrow(df)+1)
+            df$date_grps <- rep(1:length(diff(i2)), diff(i2))
+            return(df)
+        }
+        
+        data = map(data, ID_breaks_in_data) %>% bind_rows()
+        
+        p = ggplot() +
+            geom_line(data = data %>% filter(INTERPROLATED == T), 
+                      aes(x = date, y = total_cases, group = date_grps, color = region), size=1.5, linetype=3) +
+            geom_line(data = data %>% filter(INTERPROLATED == F),
+                      aes(x = date, y = total_cases, group = date_grps, color = region), size=1.5, linetype=1) +
+            labs(y = "Total Cases") + 
+            scale_y_continuous(labels = addUnits, limits = c(0, NA)) + 
+            scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+            custom_plot_theme() +
+            theme(axis.text.x = element_text(angle=45, hjust=1))    
+        
+        return(p)
+    })
+    
+    # ------------
+    # Render New Cases Plot
+    # ------------
+    
+    plot_NewCases <- reactive({
+        
+        data = data() %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
+        
+        p = ggplot(data = data) +
+            geom_line(aes(x = date, y = new_cases, group = region, color = region), linetype=2) +
+            geom_line(aes(x = date, y = new_cases_smoothed, group = region, color = region), linetype=1, size=1.5) +
+            labs(y = "New Cases") + 
+            scale_y_continuous(labels = addUnits, limits = c(0, NA)) + 
+            scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+            custom_plot_theme() +
+            theme(axis.text.x = element_text(angle=45, hjust=1))    
+        
+        return(p)
+    })
+    
+    
+    #--------------
+    # Show Secondary Plot
+    #--------------
+    
+    secondary_plot <- reactiveValues(p = "total_cases")
+    
+    observeEvent(input$button_TotalCases, {
+        secondary_plot$p <- "total_cases"
+    })
+    
+    observeEvent(input$button_NewCases, {
+        secondary_plot$p <- "new_cases"
+    })  
+    
+    output$secondary_plot = renderPlot({
+        
+        if(secondary_plot$p == "total_cases") {
+            plot_TotalCases()
+        } else {
+            plot_NewCases()
+        }
 
+    })
+    
     # ----------------
     # Render Score Card
     # -----------------
     
     output$Score_Card <- renderUI({
         
-        data = data_subset()
+        data = data()
         data = data %>% filter(date >= Sys.Date() - 14 & date < Sys.Date() - 7)
         
         selected_regions = input$geographic_location
@@ -369,7 +479,7 @@ server <- function(input, output, clientData, session) {
             
             data_subset = data %>% filter(region == selected_regions[i]) 
             
-            # Get min and max R estimates
+            # Get mean lower and upper bounds of R estimates
             Rmax = data_subset %>%
                 dplyr::select(contains("R_Quantile_975")) %>% 
                 map_dbl(., mean, na.rm=T) %>% mean(., na.rm=T) %>%
@@ -380,23 +490,11 @@ server <- function(input, output, clientData, session) {
                 map_dbl(., mean, na.rm=T) %>% mean(., na.rm=T) %>%
                 round(.,2)
             
-            print(unique(data_subset$region))
-            #normalize to between 0 and 1
-            # ymax = Rmax
-            # ymin = Rmin
-            # if(ymax > 2) {ymax = 1.5} else if (ymax < 0.5) {ymax = 0.5}
-            # if(ymin > 2) {ymin = 1.5} else if (ymin < 0.5) {ymin = 0.5}
-            # 
-            # ymax = (ymax-0.5)/(1.5-0.5)
-            # ymin = (ymin-0.5)/(1.5-0.5)
-            # 
-            # color_limits = colorRamp(c("green", "red"))(c(ymax,ymin)) %>% apply(., 1, paste, collapse=",")
-            # 
-            # # Get mean R estimate
-            # # R_mean = data %>% filter(region == region) %>% select(contains(".R_mean")) %>%
-            # #             summarise_all(mean, na.rm=T) %>% .[1,] %>% mean(.,na.rm=T)
-            # #     
+            if(Rmin < 0 ) {
+                Rmin = 0
+            }
             
+            # Assing colors to mean upper and lower bounds 
             if(Rmin > 1) {
                 min_color = "255,0,0"
             } else if (Rmin < 0.95) {
@@ -415,18 +513,18 @@ server <- function(input, output, clientData, session) {
             
             score_cards[i] = 
 
-                paste("<svg height='100' width='100'>",
+                paste("<svg height='125' width='125'>",
                         "<defs>",
                             "<linearGradient id='grad", i,"' gradientTransform='rotate(90)'>",
                               "<stop offset='0%' style='stop-color:rgb(", max_color, ");stop-opacity:1' />",
                               "<stop offset='100%' style='stop-color:rgb(", min_color,");stop-opacity:1' />",
                             "</linearGradient>",
                         "</defs>",
-                        "<rect width='100' height='100' fill='url(#grad",i,")' />",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='20', text-anchor='middle'>", input$geographic_location[i] ,"</text>",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='40', text-anchor='middle'>Last week's</text>",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='60', text-anchor='middle'>Average R Range</text>",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='80', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
+                        "<rect width='125' height='125' rx='15' fill='url(#grad",i,")' />",
+                        "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='25', text-anchor='middle'>", input$geographic_location[i] ,"</text>",
+                        "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='55', text-anchor='middle'>Last week's</text>",
+                        "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='65', text-anchor='middle'>Average R Range:</text>",
+                        "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='100', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
                         "Sorry, your browser does not support inline SVG.",
                     "</svg>", sep="")
          }
@@ -445,7 +543,7 @@ server <- function(input, output, clientData, session) {
     # *************
 
     output$Plot_Info <- renderPrint({
-        data = data_subset()
+        data = data()
         
         print("Hover mouse over plot for more info")
         print("Click-and-Drag to select a plot area.")
@@ -461,7 +559,7 @@ server <- function(input, output, clientData, session) {
             print(warning_annotation)
         }
         if(nrow(data) > 0 & !is.null(input$plot_R.hover)) {
-            hover_info = input$plot_R.hover
+            hover_info = isolate(input$plot_R.hover)
             hover.date = as.Date(hover_info$x, origin="1970-01-01")
 
             data = data %>% filter(date == as.character(hover.date)) %>%
@@ -482,7 +580,16 @@ server <- function(input, output, clientData, session) {
             print("***********************************")
             print("* INFROMATION FROM MOUSE POSITION *")
             print("***********************************")
-            print(as.data.frame(data))
+            
+            data = as.data.frame(data)
+            print(paste("Date:", data$date[1]))
+            
+            data = split(data, f=data$region)
+            data = map(data, function(x) x %>% dplyr::select(`R Estimation`, mean, `95% CI`))
+            for(i in seq_along(data)) {
+                print(names(data)[i])
+                print(data[[i]])
+            }
 
         } 
     })
