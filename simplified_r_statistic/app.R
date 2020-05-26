@@ -13,6 +13,8 @@ library(ggpubr)
 library(RcppRoll)
 library(EpiEstim)
 library(R0)
+library(DiagrammeR)
+library(shinyjs)
 
 # ****************
 # Load Data
@@ -31,6 +33,26 @@ DATA = DATA %>%
     dplyr::select(-filtering) %>%
     ungroup()
 
+# ****************
+# Javascript Functions
+# ****************
+
+download_node_js = "var elem = document.getElementById('download-data');
+                     var topPos = elem.offsetTop;
+                     document.getElementById('md_file').scrollTop = topPos;"
+
+standardize_node_js = "var elem = document.getElementById('standardize-data');
+                       var topPos = elem.offsetTop;
+                       document.getElementById('md_file').scrollTop = topPos;"
+
+bind_node_js = "var elem = document.getElementById('bind_data');
+                var topPos = elem.offsetTop;
+                document.getElementById('md_file').scrollTop = topPos;"
+
+clean_node_js = paste("var elem = document.getElementById('clean_", 1:3, "');
+                       var topPos = elem.offsetTop;
+                       document.getElementById('md_file').scrollTop = topPos;", sep="")
+
 # *************
 # User Interface 
 # *************
@@ -43,109 +65,123 @@ ui <- fluidPage(
     # *************
     
     # Application title
-    titlePanel("R Estimator"),
-    
-    fluidRow(
-        tags$span("Here we show multiple methods of estimating the effective reproduction number (R)"),
-        tags$b("Note: We have made assumptions in calculating this R values. 
-               Neither those assumptions or the code for this tool have been peer-reviewed"),
-        tags$span("We will be adding information on the code and how these R estimations are calculated soon."),
-        tags$br(),
-        tags$br()
-        
-    ),
-    
-    # ---------------
-    # Controls
-    # ---------------
-    
-    column(3,
-        wellPanel(
-            
-            selectInput(inputId = "geographic_location",
-                        label = "Search & Select Geographic Location (multiple selection allowed):",
-                        choices = c("Select regions" = "", unique(DATA$region)),
-                        multiple = T,
-                        selected = "World"),
-            
-            dateRangeInput(inputId = "dateRange",
-                           label = "select dates",
-                           start = Sys.Date() - 56,
-                           end = Sys.Date())
-        ), 
-
-        wellPanel(
-            
-            tags$h4("Smooth Daily New Cases"),
-            
-            sliderInput(inputId = "smoothing_window",
-                        label = "Smoothing Window Size",
-                        min = 4, max = 14, value = 7, step = 1),
-            
-            tags$h4("Parameters for R calculation"),
-            
-            tags$head(
-                tags$style(
-                    HTML(".checkbox-inline {margin-left: 0px; margin-right: 10px;}
-                          .checkbox-inline+.checkbox-inline {margin-left: 0px; margin-right: 10px;}"
-                         )
-                ) 
+    navbarPage("R Estimator",
+        tabPanel("Main", fluid = TRUE,
+            fluidRow(
+                tags$span("Here we show multiple methods of estimating the effective reproduction number (R)"),
+                tags$b("Note: We have made assumptions in calculating this R values. 
+                       Neither those assumptions or the code for this tool have been peer-reviewed"),
+                tags$span("We will be adding information on the code and how these R estimations are calculated soon."),
+                tags$br(),
+                tags$br()
+                
             ),
             
-            checkboxGroupInput(inputId = "R_type", 
-                               label = "Select Method of R Calculation",
-                               choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)", "RKI (2020)"),
-                               choiceValues = c("KN", "Cori", "TD", "RKI"),
-                               inline = T,
-                               selected = "KN"),
+            # ---------------
+            # Controls
+            # ---------------
             
-            sliderInput(inputId = "var.si_mean",
-                        label = "Mean Serial Interval (days)",
-                        min = 1, max = 10, value = 4, step = 1),
-            
-            sliderInput(inputId = "var.si_sd",
-                        label = "Standard Deviation of Serial Interval (days)",
-                        min = 1, max = 10, value = 3, step = 1),
-            
-            sliderInput(inputId = "var.window_size",
-                        label = "Window Size",
-                        min = 2, max = 14, value = 7, step = 1)
-        )
-    ),
-
-    # -------------
-    # Plots
-    # -------------
-    column(6,
+            column(3,
+                wellPanel(
+                    
+                    selectInput(inputId = "geographic_location",
+                                label = "Search & Select Geographic Location (multiple selection allowed):",
+                                choices = c("Select regions" = "", unique(DATA$region)),
+                                multiple = T,
+                                selected = "World"),
+                    
+                    dateRangeInput(inputId = "dateRange",
+                                   label = "select dates",
+                                   start = Sys.Date() - 56,
+                                   end = Sys.Date())
+                ), 
         
-        plotOutput("plot_R", height="400px",
-             hover = hoverOpts(id ="plot_R.hover", delay=50, delayType = "debounce"),
-             dblclick = "plot_R.dblclk",
-             brush = brushOpts(id = "plot_R.brush", resetOnNew = TRUE)
-        ),
-
-        fluidRow(
-            tags$b("Select data to display on secondary plot"),
-            splitLayout(cellWidths = c("15%", "15%"),
-                actionLink("button_TotalCases", "Total Cases"),
-                actionLink("button_NewCases", "New Cases")
+                wellPanel(
+                    
+                    tags$h4("Smooth Daily New Cases"),
+                    
+                    sliderInput(inputId = "smoothing_window",
+                                label = "Smoothing Window Size",
+                                min = 4, max = 14, value = 7, step = 1),
+                    
+                    tags$h4("Parameters for R calculation"),
+                    
+                    tags$head(
+                        tags$style(
+                            HTML(".checkbox-inline {margin-left: 0px; margin-right: 10px;}
+                                  .checkbox-inline+.checkbox-inline {margin-left: 0px; margin-right: 10px;}"
+                                 )
+                        ) 
+                    ),
+                    
+                    checkboxGroupInput(inputId = "R_type", 
+                                       label = "Select Method of R Calculation",
+                                       choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)", "RKI (2020)"),
+                                       choiceValues = c("KN", "Cori", "TD", "RKI"),
+                                       inline = T,
+                                       selected = "KN"),
+                    
+                    sliderInput(inputId = "var.si_mean",
+                                label = "Mean Serial Interval (days)",
+                                min = 1, max = 10, value = 4, step = 1),
+                    
+                    sliderInput(inputId = "var.si_sd",
+                                label = "Standard Deviation of Serial Interval (days)",
+                                min = 1, max = 10, value = 3, step = 1),
+                    
+                    sliderInput(inputId = "var.window_size",
+                                label = "Window Size",
+                                min = 2, max = 14, value = 7, step = 1)
+                )
+            ),
+        
+            # -------------
+            # Plots
+            # -------------
+            column(6,
+                
+                plotOutput("plot_R", height="400px",
+                     hover = hoverOpts(id ="plot_R.hover", delay=50, delayType = "debounce"),
+                     dblclick = "plot_R.dblclk",
+                     brush = brushOpts(id = "plot_R.brush", resetOnNew = TRUE)
+                ),
+        
+                fluidRow(
+                    tags$b("Select data to display on secondary plot"),
+                    splitLayout(cellWidths = c("15%", "15%"),
+                        actionLink("button_TotalCases", "Total Cases"),
+                        actionLink("button_NewCases", "New Cases")
+                    )
+                ),
+                
+                plotOutput("secondary_plot")
+            ),
+            
+            column(3, 
+                   
+               fixedRow(
+                   htmlOutput("Score_Card")
+               ),
+               
+               fixedRow(
+                   verbatimTextOutput("Plot_Info")
+               )
             )
-        ),
-        
-        plotOutput("secondary_plot")
-    ),
-    
-    column(3, 
-           
-       fixedRow(
-           htmlOutput("Score_Card")
-       ),
-       
-       fixedRow(
-           verbatimTextOutput("Plot_Info")
-       )
+        ), 
+        tabPanel("Code", fluid = TRUE,
+                 tags$head(
+                     tags$style(HTML(".node:hover polygon {fill: red;} .node {cursor:pointer}"))
+                 ),
+                 useShinyjs(),
+                 column(6, grVizOutput('graphV')),
+                 column(6, uiOutput("md_file", style = "overflow-y:scroll; max-height: 600px"))
+        ), 
+        tabPanel("About", fluid = TRUE, 
+            tags$p("Code for app by Arya Zandvakili MD, PhD"),
+            tags$p("Conception of app by Elon Kohlberg PhD, Abraham Neyman PhD, and Gavriel Kohlberg MD"),
+            tags$b("References:")
+        )
     )
-    
 )   
 
 # --------------
@@ -468,6 +504,7 @@ server <- function(input, output, clientData, session) {
         
         data = data()
         data = data %>% filter(date >= Sys.Date() - 14 & date < Sys.Date() - 7)
+        data = data %>% dplyr::select(contains(input$R_type))
         
         selected_regions = input$geographic_location
         if(is.null(selected_regions)){selected_regions = "World"}
@@ -477,7 +514,7 @@ server <- function(input, output, clientData, session) {
         for(i in 1:length(selected_regions)) {
             region = selected_regions[i]
             
-            data_subset = data %>% filter(region == selected_regions[i]) 
+            data_subset = data %>% filter(region == selected_regions[i])
             
             # Get mean lower and upper bounds of R estimates
             Rmax = data_subset %>%
@@ -508,9 +545,9 @@ server <- function(input, output, clientData, session) {
             
             # Assing colors to mean upper and lower bounds 
             color_assignment_function = function(x) {
-                if(x > 1) {
+                if(x > 1.2) {
                     x = "255,0,0"
-                } else if (x < 0.95) {
+                } else if (x < 0.8) {
                     x = "0,255,0"
                 } else {
                     x = "255,255,0"
@@ -525,11 +562,11 @@ server <- function(input, output, clientData, session) {
                 "<stop offset='", R_range.position, "%' style='stop-color:rgb(", R_range.colors, ");stop-opacity:1' />",
             sep="", collapse=" ")
             
-            print(data.frame(R_range, R_range.colors))
-            print(gradient_style)
+            score_card_dates = paste(format(Sys.Date() - 14, '%b-%d'), "to", format(Sys.Date() - 8, '%b-%d'))
+            
             score_cards[i] = 
 
-                paste("<svg height='125' width='125'>",
+                paste("<svg height='150' width='150'>",
                         "<defs>",
                             "<linearGradient id='grad", i,"' gradientTransform='rotate(90)'>",
                               # "<stop offset='0%' style='stop-color:rgb(", max_color, ");stop-opacity:1' />",
@@ -537,10 +574,11 @@ server <- function(input, output, clientData, session) {
                                 gradient_style,
                             "</linearGradient>",
                         "</defs>",
-                        "<rect width='125' height='125' rx='15' fill='url(#grad",i,")' />",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='25', text-anchor='middle'>", input$geographic_location[i] ,"</text>",
+                        "<rect width='150' height='125' rx='15' fill='url(#grad",i,")' />",
+                        "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='25', text-anchor='middle'>", input$geographic_location[i],"</text>",
                         "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='55', text-anchor='middle'>Last week's</text>",
                         "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='65', text-anchor='middle'>Average R Range:</text>",
+                      "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='75', text-anchor='middle'>",score_card_dates,"</text>",
                         "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='100', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
                         "Sorry, your browser does not support inline SVG.",
                     "</svg>", sep="")
@@ -608,6 +646,66 @@ server <- function(input, output, clientData, session) {
             }
 
         } 
+    })
+    
+    
+    #-----------
+    # Code Page
+    #------------
+    
+    # Load html
+    output$md_file <- renderUI({includeMarkdown("Code_Explanation.html")})
+    
+    # Click functions on graphviz nodes
+    observe({shinyjs::onclick("node1", runjs(download_node_js))})
+    observe({shinyjs::onclick("node3", runjs(download_node_js))})
+    observe({shinyjs::onclick("node5", runjs(download_node_js))})
+    observe({shinyjs::onclick("node2", runjs(standardize_node_js))})
+    observe({shinyjs::onclick("node4", runjs(standardize_node_js))})
+    observe({shinyjs::onclick("node6", runjs(standardize_node_js))})
+    observe({shinyjs::onclick("node7", runjs(bind_node_js))})
+    observe({shinyjs::onclick("node8", runjs(clean_node_js[1]))})
+    observe({shinyjs::onclick("node9", runjs(clean_node_js[2]))})
+    observe({shinyjs::onclick("node10", runjs(clean_node_js[3]))})
+    
+    # Load graphviz
+    output$graphV <- renderGrViz({ 
+        grViz("
+    digraph a_nice_graph {
+    
+      # a 'graph' statement
+      graph [compound = true, nodesep = .5, ranksep = .25, color = crimson, fontsize = 10]
+    
+      # several 'node' statements
+      node [shape = box, fontname = Helvetica]
+      
+      # edge definitions with the node IDs
+      '@@1' -> '@@2';
+      '@@3' -> '@@4';
+      '@@5' -> '@@6' 
+      
+      {'@@2','@@4','@@6'} -> '@@7'
+      
+      subgraph cluster0 {
+        label = 'Clean Data';
+        fontsize = 10;
+        '@@8' -> '@@9' -> '@@10';
+      }
+      
+      '@@7' -> '@@8'    [lhead = cluster0];
+    }
+      
+    [1]: 'Download US county data table \\n from NYT'
+    [3]: 'Download US state data table \\n from covidtracking.com'
+    [5]: 'Download country data table from \\n covid.ourworldindata.org'
+    [2]: 'Standardize US county data'
+    [4]: 'Standardize US State data'
+    [6]: 'Standardize Country data'
+    [7]: 'Bind data into one table'
+    [8]: 'For each region, remove leading dates where \\n  the number of total cases is unknown or 0'
+    [9]: 'For each region, remove dates that have \\n greater number of total cases than a future date'
+    [10]: 'Interprolate total cases for dates that were removed'
+    ")
     })
 }
 
