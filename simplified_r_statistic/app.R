@@ -141,7 +141,7 @@ ui <- fluidPage(
             column(6,
                 
                 plotOutput("plot_R", height="400px",
-                     hover = hoverOpts(id ="plot_R.hover", delay=50, delayType = "debounce"),
+                     hover = hoverOpts(id ="plot_R.hover", delay=40, delayType = "debounce", ),
                      dblclick = "plot_R.dblclk",
                      brush = brushOpts(id = "plot_R.brush", resetOnNew = TRUE)
                 ),
@@ -154,7 +154,10 @@ ui <- fluidPage(
                     )
                 ),
                 
-                plotOutput("secondary_plot")
+                plotOutput("secondary_plot", height="400px", 
+                           hover = hoverOpts(id ="secondary_plot.hover", delay=40, delayType = "debounce"),
+                           dblclick = "secondary_plot.dblclk",
+                           brush = brushOpts(id = "secondary_plot.brush", resetOnNew = TRUE))
             ),
             
             column(3, 
@@ -503,85 +506,66 @@ server <- function(input, output, clientData, session) {
     output$Score_Card <- renderUI({
         
         data = data()
-        data = data %>% filter(date >= Sys.Date() - 14 & date < Sys.Date() - 7)
-        data = data %>% dplyr::select(contains(input$R_type))
         
         selected_regions = input$geographic_location
         if(is.null(selected_regions)){selected_regions = "World"}
         
+        week_start = c(21,14,7)
         score_cards = vector(mode="list", length=length(selected_regions))
-        
+
         for(i in 1:length(selected_regions)) {
-            region = selected_regions[i]
-            
             data_subset = data %>% filter(region == selected_regions[i])
             
-            # Get mean lower and upper bounds of R estimates
-            Rmax = data_subset %>%
-                dplyr::select(contains("R_Quantile_975")) %>% 
-                unlist()
+            score_cards_j = vector(mode="list", length=length(week_start))
             
-            Rmin = data_subset %>%
-                dplyr::select(contains("R_Quantile_025")) %>%
-                unlist()
-            
-            Rmean = data_subset %>%
-                dplyr::select(contains("R_mean")) %>%
-                unlist()
-            
-            Rmin = replace(Rmin, which(Rmin < 0), 0)
-            Rmin = Rmin[!is.na(Rmin)]
-            Rmax = replace(Rmax, which(Rmax < 0), 0)
-            Rmax = Rmax[!is.na(Rmax)]
-            Rmean = replace(Rmax, which(Rmean < 0), 0)
-            Rmean = Rmean[!is.na(Rmean)]
-            
-            R_range = c(Rmin, Rmax, Rmean)
-            R_range = summary(R_range) %>% as.numeric()
-            R_range = rev(R_range[-4])
-            
-            Rmin = min(R_range, na.rm=T) %>% round(2)
-            Rmax = max(R_range, na.rm=T) %>% round(2)
-            
-            # Assing colors to mean upper and lower bounds 
-            color_assignment_function = function(x) {
-                if(x > 1.2) {
-                    x = "255,0,0"
-                } else if (x < 0.8) {
-                    x = "0,255,0"
-                } else {
-                    x = "255,255,0"
+            for (j in seq_along(week_start)) {
+
+                data_subset.2 = data_subset %>% filter(date >= (Sys.Date() - (week_start[j]+7)) & date < (Sys.Date() - week_start[j]))
+                data_subset.2 = data_subset.2 %>% dplyr::select(starts_with(input$R_type))
+                
+                if(nrow(data_subset.2) == 0){
+                    next
                 }
-                return(x)
+                
+                # Get mean lower and upper bounds of R estimates
+                Rmax = data_subset.2 %>%
+                    dplyr::select(contains("R_Quantile_975")) %>% 
+                    unlist() %>% mean(na.rm=T) %>% round(2)
+                
+                Rmin = data_subset.2 %>%
+                    dplyr::select(contains("R_Quantile_025")) %>%
+                    unlist() %>% mean(na.rm=T) %>% round(2)
+                
+                Rmean = data_subset.2 %>%
+                    dplyr::select(contains("R_mean")) %>%
+                    unlist() %>% mean(na.rm=T) %>% round(2)
+                 
+                if(Rmean < 1 & Rmax <= 1) {
+                    color_assingment = "rgb(0,255,0)"
+                } else if (Rmean < 1 & Rmax > 1) {
+                    color_assingment = "rgb(255,255,0)"
+                } else if (Rmean >= 1 & Rmin < 1) {
+                    color_assingment = "rgb(255,165,0)"
+                } else if (Rmean >= 1 & Rmin >= 1) {
+                    color_assingment = "rgb(255,0,0)"
+                }
+                
+                score_card_dates = paste(format(Sys.Date() - (week_start[j]+7), "%b-%d"), "to",format(Sys.Date() - week_start[j], "%b-%d"))
+                
+                score_cards_j[j] = 
+    
+                    paste("<svg height='100' width='100'>",
+                            "<rect width='100' height='100' rx='15' fill='", color_assingment, "' />",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='30', text-anchor='middle'>Average R Range:</text>",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='50', text-anchor='middle'>",score_card_dates,"</text>",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='70', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
+                            "Sorry, your browser does not support inline SVG.",
+                        "</svg>", sep="")
             }
             
-            R_range.colors = map_chr(R_range, color_assignment_function)
-           
-            R_range.position = seq(0, 100, length.out = length(R_range))
-            gradient_style = paste(
-                "<stop offset='", R_range.position, "%' style='stop-color:rgb(", R_range.colors, ");stop-opacity:1' />",
-            sep="", collapse=" ")
+            score_cards[i] = paste(score_cards_j, collapse=" ")
+            score_cards[i] = paste("<p><b>",input$geographic_location[i],"</b></p>", score_cards[i])
             
-            score_card_dates = paste(format(Sys.Date() - 14, '%b-%d'), "to", format(Sys.Date() - 8, '%b-%d'))
-            
-            score_cards[i] = 
-
-                paste("<svg height='150' width='150'>",
-                        "<defs>",
-                            "<linearGradient id='grad", i,"' gradientTransform='rotate(90)'>",
-                              # "<stop offset='0%' style='stop-color:rgb(", max_color, ");stop-opacity:1' />",
-                              # "<stop offset='100%' style='stop-color:rgb(", min_color,");stop-opacity:1' />",
-                                gradient_style,
-                            "</linearGradient>",
-                        "</defs>",
-                        "<rect width='150' height='125' rx='15' fill='url(#grad",i,")' />",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='25', text-anchor='middle'>", input$geographic_location[i],"</text>",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='55', text-anchor='middle'>Last week's</text>",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='65', text-anchor='middle'>Average R Range:</text>",
-                      "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='75', text-anchor='middle'>",score_card_dates,"</text>",
-                        "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='100', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
-                        "Sorry, your browser does not support inline SVG.",
-                    "</svg>", sep="")
          }
          
          score_cards = paste(score_cards, collapse=" ")
@@ -595,7 +579,7 @@ server <- function(input, output, clientData, session) {
     # *************
     # Hover Info
     # *************
-
+    
     output$Plot_Info <- renderPrint({
         data = data()
         
@@ -612,42 +596,146 @@ server <- function(input, output, clientData, session) {
             print("***********************************")
             print(warning_annotation)
         }
-        if(nrow(data) > 0 & !is.null(input$plot_R.hover)) {
-            hover_info = isolate(input$plot_R.hover)
-            hover.date = as.Date(hover_info$x, origin="1970-01-01")
-
+    })
+    
+    observeEvent(input$plot_R.hover, {
+        
+        data = data()
+        hover_info = input$plot_R.hover
+        hover.date = as.Date(hover_info$x, origin="1970-01-01")
+        
+        output$secondary_plot = renderPlot({
+            if(secondary_plot$p == "total_cases") {
+                plot_TotalCases() + geom_vline(xintercept = hover.date)
+            } else {
+                plot_NewCases() + geom_vline(xintercept = hover.date)
+            }    
+        })
+        
+        if(nrow(data) > 0) {
+            
             data = data %>% filter(date == as.character(hover.date)) %>%
-                 dplyr::select(date, region, contains(input$R_type)) %>%
-                 mutate_if(is.numeric, round, digits=2)
+                dplyr::select(date, region, contains(input$R_type)) %>%
+                mutate_if(is.numeric, round, digits=2)
             data = data %>% pivot_longer(-c(1:2), names_to = c("R_type", ".value"), names_sep = "\\.")
             colnames(data) = gsub("R_", "", colnames(data))
             colnames(data)[3] = "R Estimation"
             data = data %>% unite(5:6, col="95% CI", sep="-")    
             
             data$`R Estimation` = factor(data$`R Estimation`)
-
-            data$`R Estimation` = fct_recode(data$`R Estimation`, Simple = "KN", 
-                                                                 `Cori et al (2013)` = "Cori", 
-                                                                 `Wallinga & Teunis (2004)` = "TD",
-                                                                 `RKI (2020)` = "RKI")
             
-            print("***********************************")
-            print("* INFROMATION FROM MOUSE POSITION *")
-            print("***********************************")
+            data$`R Estimation` = fct_recode(data$`R Estimation`, Simple = "KN", 
+                                             `Cori et al (2013)` = "Cori", 
+                                             `Wallinga & Teunis (2004)` = "TD",
+                                             `RKI (2020)` = "RKI")
             
             data = as.data.frame(data)
-            print(paste("Date:", data$date[1]))
             
-            data = split(data, f=data$region)
-            data = map(data, function(x) x %>% dplyr::select(`R Estimation`, mean, `95% CI`))
-            for(i in seq_along(data)) {
-                print(names(data)[i])
-                print(data[[i]])
-            }
-
-        } 
+            output$Plot_Info <- renderPrint({ 
+                print("Hover mouse over plot for more info")
+                print("Click-and-Drag to select a plot area.")
+                print("Double-click to zoom in and out.")
+                
+                if(any(!(input$geographic_location %in% unique(data$region)))) {
+                    regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+                    regions_without_data = paste(regions_without_data, sep=", ")
+                    warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+                    print("***********************************")
+                    print("*             WARNING             *")
+                    print("***********************************")
+                    print(warning_annotation)
+                }
+                
+                print("***********************************")
+                print("* INFROMATION FROM MOUSE POSITION *")
+                print("***********************************")
+                
+                print(paste("Date:", data$date[1]))
+                
+                data = split(data, f=data$region)
+                data = map(data, function(x) x %>% dplyr::select(`R Estimation`, mean, `95% CI`))
+                for(i in seq_along(data)) {
+                    print(names(data)[i])
+                    print(data[[i]])
+                }
+            })
+        } else {
+            output$Plot_Info <- renderPrint({ 
+                print("Hover mouse over plot for more info")
+                print("Click-and-Drag to select a plot area.")
+                print("Double-click to zoom in and out.")
+                
+                if(any(!(input$geographic_location %in% unique(data$region)))) {
+                    regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+                    regions_without_data = paste(regions_without_data, sep=", ")
+                    warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+                    print("***********************************")
+                    print("*             WARNING             *")
+                    print("***********************************")
+                    print(warning_annotation)
+                }
+            })
+        }
     })
     
+    observeEvent(input$secondary_plot.hover, {
+        
+        data = data()
+        hover_info = input$secondary_plot.hover
+        hover.date = as.Date(hover_info$x, origin="1970-01-01")
+        
+        output$plot_R = renderPlot({
+            plot_R() + geom_vline(xintercept = hover.date)
+        })
+        
+        if(nrow(data) > 0) {
+            
+            data = data %>% filter(date == as.character(hover.date)) %>%
+                dplyr::select(region, total_cases, new_cases) %>%
+                mutate_if(is.numeric, round, digits=2)
+            
+            data = as.data.frame(data)
+            
+            output$Plot_Info <- renderPrint({ 
+                print("Hover mouse over plot for more info")
+                print("Click-and-Drag to select a plot area.")
+                print("Double-click to zoom in and out.")
+                
+                if(any(!(input$geographic_location %in% unique(data$region)))) {
+                    regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+                    regions_without_data = paste(regions_without_data, sep=", ")
+                    warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+                    print("***********************************")
+                    print("*             WARNING             *")
+                    print("***********************************")
+                    print(warning_annotation)
+                }
+                
+                print("***********************************")
+                print("* INFROMATION FROM MOUSE POSITION *")
+                print("***********************************")
+                
+                print(paste("Date:", hover.date))
+                print(data)
+            })
+        } else {
+            output$Plot_Info <- renderPrint({ 
+                print("Hover mouse over plot for more info")
+                print("Click-and-Drag to select a plot area.")
+                print("Double-click to zoom in and out.")
+                
+                if(any(!(input$geographic_location %in% unique(data$region)))) {
+                    regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+                    regions_without_data = paste(regions_without_data, sep=", ")
+                    warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+                    print("***********************************")
+                    print("*             WARNING             *")
+                    print("***********************************")
+                    print(warning_annotation)
+                }
+            })
+        }
+    })
     
     #-----------
     # Code Page
