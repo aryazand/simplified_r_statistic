@@ -85,6 +85,8 @@ fips_reference = tigris::fips_codes %>% dplyr::select(1:3) %>% distinct()
 Bind rows together
 ```{r bind_data}
 DATA <- bind_rows(list(US_countydata, US_statedata, countrydata))
+
+#DT::datatable(DATA)
 ```
 </div>
 
@@ -95,13 +97,15 @@ For each region, remove leading dates that are just a series of 0s or NAs
 
 ```{r clean_step1, warning=F, message=F}
 DATA2 <- DATA %>%
-  filter(!is.na(total_cases)) %>%
+  filter(!is.na(total_cases) & total_cases > 0) %>%
   group_by(region, regionID, region_type, regionID_type) %>%
   summarise(reference_date = min(date))
 
 DATA <- full_join(DATA, DATA2) %>%
   filter(date >= reference_date) %>%
   dplyr::select(-reference_date)
+
+#DT::datatable(DATA)
 ```
 
 </div>
@@ -157,6 +161,8 @@ while(any(DATA$new_cases < 0)) {
 DATA = DATA %>%
   dplyr::select(-c(negative_increase, has_negative_newcases, reference_date, rows_to_filter)) %>%
   ungroup()
+
+#DT::datatable(DATA)
 ```
 
 </div>
@@ -179,16 +185,20 @@ DATA = bind_rows(DATA, DATES_TO_INTERPROLATE)
 DATA = DATA %>% dplyr::select(region, region_type, regionID, regionID_type, date, total_cases, new_cases, INTERPROLATED)
 
 DATA = DATA %>%
-group_by(region, region_type, regionID, regionID_type) %>%
-arrange(date) %>%
-mutate(total_cases = zoo::na.approx(total_cases, na.rm=F)) %>%
-mutate(new_cases = c(0, diff(total_cases)))
+  group_by(region, region_type, regionID, regionID_type) %>%
+  arrange(date) %>%
+  mutate(total_cases = zoo::na.approx(total_cases, na.rm=F)) %>%
+  mutate(new_cases = c(0, diff(total_cases))) %>%
+  ungroup()
+
 
 # -------------------------------------------------------
 # Replace NA values in new_cases with 0
 # -------------------------------------------------------
 
 DATA$new_cases = replace(DATA$new_cases, which(is.na(DATA$new_cases)), 0)
+
+#DT::datatable(DATA)
 ```
 
 </div>
@@ -196,3 +206,158 @@ DATA$new_cases = replace(DATA$new_cases, which(is.na(DATA$new_cases)), 0)
 ```{r echo=F, message=F, warning=F}
 write_csv(DATA, "case_data.csv")
 ```
+
+
+
+## Select Region to Plot
+
+```{r mesage=F, warning=F, echo=F}
+geographic_location = "Ohio, United States"
+smoothing_window = 7 
+var.si_mean = 4
+var.si_sd = 3
+var.tau = 7
+```
+
+For demonstration purpuoses, we'll select the `r geographic_location` as the region to analyze
+
+```{r message=F, warning=F}
+
+#geographic_location holds the user input on geographic location 
+data <-DATA %>% filter(region %in% geographic_location)
+```
+
+## Smooth Data
+
+We use an unweighted rolling mean to smooth the number of new cases per day. The the window size for the rolling mean can be user  controlled in the web app. Here we will use a smoothing window size of `r smoothing_window` days. 
+
+```{r message=F, warning=F}
+library(RcppRoll)
+
+#smoothing_window hold the user input on the size of the smoothing window
+data = data %>%
+    group_by(region, region_type, regionID, regionID_type) %>%
+    mutate(new_cases_smoothed = roll_mean(new_cases, n = smoothing_window, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
+    mutate(new_cases_smoothed = replace(new_cases_smoothed, is.na(new_cases_smoothed), new_cases[is.na(new_cases_smoothed)])) %>%
+    ungroup()
+
+
+# replace NAs in new_cases_smoothed with value from new_cases
+data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
+
+# Remove smoothed new cases that result in NAs or leading 0s
+data = data %>% filter(!is.na(new_cases_smoothed)) %>% 
+  mutate(reference_date = date[min(which((new_cases_smoothed > 0)))]) %>%
+  filter(date >= reference_date) %>%
+  dplyr::select(-reference_date)
+
+#DT::datatable(data)
+```
+
+<div id="estimate_r0">
+## Estimate $R_t$
+
+All the method here use a the serial interval (as a proxy of the generation interval) to estimate $R_t$. For the webapp we assume that the serial interval has a parametric distribution and the user can control the mean and standard deviation of the distribution (the exact type of distribution is depends on the method used estimate $R_t$). By default, we'll assume the mean is `r var.si_mean` and standard deviation of `r var.si_sd` (as measured for SARS-CoV-2 by Nishiura et al, 2020).
+
+### Simple R calcuation
+
+For this estimation method, the serial interval is assumed to be well-approximated by a point mass (the median of the serial interval distribution). The $R_t$ is estimated as the ratio between new cases ($I$) on day $t + D$ and day $t$, where $D$ is the mean serial interval. To have less statistical noise, instead of calculating the ratio of new cases for two days ($t$ and $t-D$), we calculate the ratio new cases for two time periods of size \tau (by default we assume \tau = `r var.tau` days). To calculate a confidence interal for the R-value, we'll assume that R is gamma distributed with parameters $k$ and \theta. 
+
+$$ R_t \sim \Gamma(shape = \sum_{s=t+D-\tau+1}^{t+D} I_s, scale = \frac{1}{\sum_{s=t-\tau+1}^{t} I_s})$$
+
+$$ \mathbb{E}[R_t] \approx \frac{\sum_{s=t+D-\tau+1}^{t+D} I_s}{\sum_{s=t-\tau+1}^{t-D} I_s}$$
+
+```{r warning=F, message=F}
+library(ggpubr)
+
+df = data %>%
+  mutate(tau_sum = roll_sum(new_cases_smoothed,  var.tau, align="right", fill = c(NA, NA, NA))) %>%
+  mutate(tau_sum = new_cases_smoothed) %>%
+  mutate(denominator = head(c(rep(NA, var.si_mean), tau_sum), var.si_mean*-1)) %>%
+  mutate(denominator = replace(denominator, which(denominator == 0), NA)) %>%
+  mutate(R_mean = tau_sum/denominator) %>%
+  mutate(k = tau_sum) %>%
+  mutate(theta = R_mean/k) %>%
+  mutate(R_Quantile_025 = qgamma(0.025, shape = k, scale = theta)) %>%
+  mutate(R_Quantile_975 = qgamma(0.975, shape = k, scale = theta)) %>%
+  mutate(date = date - var.si_mean)
+
+ggplot(df) + 
+  geom_ribbon(aes_string(x = "date",  ymin="R_Quantile_025", ymax="R_Quantile_975", group = "region", fill = "region"), alpha=0.15) +
+  geom_line(aes_string(x = "date", y = "R_mean", color = "region", group = "region"), size =1.25) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
+  scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+  theme_pubr() + 
+  theme(axis.text.x = element_text(angle=45, hjust=1))  
+```
+
+###  Cori et al (2013) $R_t$ estimation
+
+Here we use one subset of methods described by Cori et al (2013). For this particular method, the serial interval is assumed to be gamma distributed. The R value is also assumed to be gamma-distributed as follows: 
+
+$$ R_t \sim \Gamma(shape = a + \sum_{s=t-\tau+1}^{t} I_s, scale = \frac{1}{\frac{1}{b} + \sum_{s=t-\tau+1}^{t} I_sw_s})$$
+
+$$\mathbb{E}[R_t] = \frac{a + \sum_{s=t-\tau+1}^{t} I_s}{\frac{1}{b} + \sum_{s=t-\tau+1}^{t} I_sw_s} $$
+
+
+Where $w_s$ is a probability distribution of how infectious individuals are at time $t$ given that they were infected $t-s$ days ago. The values of $a$ and $b$ are estimated using a Bayesian approach, with the priors of $a$ and $b$ being 1 and 5, respectively. We conduct these calculations using the EpiEstim package in R. 
+
+```{r warning=F, message=F}
+library("EpiEstim")
+r_estimates = estimate_R(data$new_cases_smoothed, 
+                         method = "parametric_si", 
+                         config = make_config(list(mean_si = var.si_mean, 
+                                                   std_si = var.si_sd,
+                                                   t_start = seq(2, length(data$new_cases_smoothed) - var.tau + 1),
+                                                   t_end = seq(var.tau+1, length(data$new_cases_smoothed))))
+                )
+
+df = data.frame(
+    date = tail(data$date, -var.tau) - var.tau,
+    R_mean = r_estimates$R$`Mean(R)`,
+    R_Quantile_025 = r_estimates$R$`Quantile.0.025(R)`,
+    R_Quantile_975 = r_estimates$R$`Quantile.0.975(R)`
+) 
+
+ggplot(df) + 
+  geom_ribbon(aes_string(x = "date",  ymin="R_Quantile_025", ymax="R_Quantile_975"), alpha=0.15) +
+  geom_line(aes_string(x = "date", y = "R_mean"), size =1.25) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
+  scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+  theme_pubr() + 
+  theme(axis.text.x = element_text(angle=45, hjust=1))  
+```
+
+### Wallinga & Teunis (2004)
+
+```{r message=F, warning=F}
+library("R0")
+    
+mGT = generation.time("gamma", c(var.si_mean, var.si_sd))
+new_cases_smoothed = data$new_cases_smoothed
+names(new_cases_smoothed) = data$date
+r_estimates = estimate.R(new_cases_smoothed, GT = mGT, methods="TD", nsim=1000)
+
+df = data.frame(
+    date = seq.Date(as.Date(r_estimates$estimates[[1]]$begin, origin="1970-01-01"), 
+                    length.out = length(r_estimates$estimates[[1]]$R), by = 1),
+    R_mean = r_estimates$estimates[[1]]$R,
+    R_Quantile_025 = r_estimates$estimates[[1]]$conf.int[[1]],
+    R_Quantile_975 = r_estimates$estimates[[1]]$conf.int[[2]]
+) 
+
+# for some reason last R estimate from TD always ends up as 0. So we'll remove that
+df = df[-c(1, nrow(df)),]
+
+ggplot(df) + 
+  geom_ribbon(aes_string(x = "date",  ymin="R_Quantile_025", ymax="R_Quantile_975"), alpha=0.15) +
+  geom_line(aes_string(x = "date", y = "R_mean"), size =1.25) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
+  scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+  theme_pubr() + 
+  theme(axis.text.x = element_text(angle=45, hjust=1))  
+```
+</div>
