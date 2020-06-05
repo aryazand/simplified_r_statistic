@@ -22,17 +22,6 @@ library(shinyjs)
 
 DATA = read_csv("./case_data.csv", col_types = "ccccDddl")
 
-# Remove lead trail of 0s 
-DATA = DATA %>% 
-    group_by(region, region_type, regionID, regionID_type) %>%
-    arrange(date) %>%
-    mutate(filtering = new_cases > 0) %>%
-    mutate(filtering = roll_sum(filtering, n=7, align="left", fill=c(NA,NA,NA), na.rm=T)) %>%
-    mutate(start_date = ifelse(length(which(filtering > 1))>1, date[min(which(filtering > 1))], NA)) %>%
-    filter(date >= start_date | is.na(start_date)) %>%
-    dplyr::select(-filtering) %>%
-    ungroup()
-
 # ****************
 # Javascript Functions
 # ****************
@@ -52,6 +41,30 @@ bind_node_js = "var elem = document.getElementById('bind_data');
 clean_node_js = paste("var elem = document.getElementById('clean_", 1:3, "');
                        var topPos = elem.offsetTop;
                        document.getElementById('md_file').scrollTop = topPos;", sep="")
+
+geo_node_js = "var elem = document.getElementById('select-region-to-plot');
+               var topPos = elem.offsetTop;
+               document.getElementById('md_file').scrollTop = topPos;"
+ 
+smooth_node_js = "var elem = document.getElementById('smooth-data');
+                  var topPos = elem.offsetTop;
+                  document.getElementById('md_file').scrollTop = topPos;"
+
+estimateR_mainnode_js = "var elem = document.getElementById('estimate-r_t');
+                         var topPos = elem.offsetTop;
+                         document.getElementById('md_file').scrollTop = topPos;"
+
+simpleR_node_js = "var elem = document.getElementById('simple-r-calcuation');
+                   var topPos = elem.offsetTop;
+                   document.getElementById('md_file').scrollTop = topPos;"
+
+coriR_node_js = "var elem = document.getElementById('cori-et-al-2013-r_t-estimation');
+                   var topPos = elem.offsetTop;
+                   document.getElementById('md_file').scrollTop = topPos;"
+
+wtR_node_js = "var elem = document.getElementById('wallinga-teunis-2004');
+                   var topPos = elem.offsetTop;
+                   document.getElementById('md_file').scrollTop = topPos;"
 
 # *************
 # User Interface 
@@ -102,7 +115,7 @@ ui <- fluidPage(
                     
                     sliderInput(inputId = "smoothing_window",
                                 label = "Smoothing Window Size",
-                                min = 4, max = 14, value = 7, step = 1),
+                                min = 1, max = 14, value = 7, step = 1),
                     
                     tags$h4("Parameters for R calculation"),
                     
@@ -116,8 +129,8 @@ ui <- fluidPage(
                     
                     checkboxGroupInput(inputId = "R_type", 
                                        label = "Select Method of R Calculation",
-                                       choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)", "RKI (2020)"),
-                                       choiceValues = c("KN", "Cori", "TD", "RKI"),
+                                       choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)"),
+                                       choiceValues = c("KN", "Cori", "TD"),
                                        inline = T,
                                        selected = "KN"),
                     
@@ -200,8 +213,8 @@ server <- function(input, output, clientData, session) {
     data <- reactive({
         data <- DATA %>% 
             filter(region %in% input$geographic_location) %>%
-            mutate(region = factor(region, levels=c(input$geographic_location))) %>%
-            filter(!is.na(start_date))
+            mutate(region = factor(region, levels=c(input$geographic_location))) #%>%
+            #filter(!is.na(start_date))
         
         if(nrow(data) == 0) {
             data <- DATA %>% filter(region == "World")
@@ -220,18 +233,28 @@ server <- function(input, output, clientData, session) {
         data = data %>%
             group_by(region, region_type, regionID, regionID_type) %>%
             mutate(new_cases_smoothed = roll_mean(new_cases, n = input$smoothing_window, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
+            mutate(new_cases_smoothed = replace(new_cases_smoothed, is.na(new_cases_smoothed), new_cases[is.na(new_cases_smoothed)])) %>%
             ungroup()
         
-        data$new_cases_smoothed[is.na(data$new_cases_smoothed) & data$new_cases > 0] = data$new_cases[is.na(data$new_cases_smoothed) & data$new_cases > 0]
+        data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
         
-        data = data %>% filter(!is.na(new_cases_smoothed))
+        data = data %>% 
+          filter(!is.na(new_cases_smoothed)) %>%
+          group_by(region, region_type, regionID, regionID_type) %>%
+          mutate(reference_date = date[min(which((new_cases_smoothed > 0)))]) %>%
+          filter(date >= reference_date) %>%
+          dplyr::select(-reference_date) %>%
+          ungroup()
+        
         #---------------------------------
         # Calculate R by published methods
         #---------------------------------
         
-        estimate.R_helper = function(dates, new_cases, nsim=1000, method=c("KN", "Cori", "TD", "RKI")) {
+        estimate.R_helper = function(dates, new_cases, nsim=1000, method=c("KN", "Cori", "TD", "EG")) {
             
             if(method  == "TD") {
+              
+                #filter out leading 0 from new_cases
                 mGT = generation.time("gamma", c(var_D, var_D_sd))
                 names(new_cases) = dates
                 r_estimates = estimate.R(new_cases, GT = mGT, begin=1, end=as.numeric(length(new_cases)), 
@@ -248,6 +271,25 @@ server <- function(input, output, clientData, session) {
                 # for some reason last R estimate from TD always ends up as 0. So we'll remove that
                 df = df[-c(1, nrow(df)),]
                 
+            } else if(method  == "EG") {
+              
+              #filter out leading 0 from new_cases
+              mGT = generation.time("gamma", c(var_D, var_D_sd))
+              names(new_cases) = dates
+              r_estimates = estimate.R(new_cases, GT = mGT, begin=1, end=as.numeric(length(new_cases)), 
+                                       methods=method, nsim=nsim)
+              
+              df = data.frame(
+                date = seq.Date(as.Date(r_estimates$estimates[[1]]$begin, origin="1970-01-01"), 
+                                length.out = length(r_estimates$estimates[[1]]$R), by = 1),
+                R_mean = r_estimates$estimates[[1]]$R,
+                R_Quantile_025 = r_estimates$estimates[[1]]$conf.int[[1]],
+                R_Quantile_975 = r_estimates$estimates[[1]]$conf.int[[2]]
+              ) 
+              
+              # for some reason last R estimate from TD always ends up as 0. So we'll remove that
+              df = df[-c(1, nrow(df)),]
+              
             } else if(method == "Cori") {
                 r_estimates = estimate_R(new_cases, method = "parametric_si", config = make_config(list(mean_si = var_D, 
                                                                  std_si = var_D_sd,
@@ -261,39 +303,22 @@ server <- function(input, output, clientData, session) {
                     R_Quantile_975 = r_estimates$R$`Quantile.0.975(R)`
                 )  
             } else if(method == "KN") {
-                weekly_sum = roll_sum(new_cases, n=var_tau, align="right", fill = c(NA, NA, NA))
-                denominator = head(c(rep(NA, var_D), weekly_sum), var_D*-1)
+                tau_sum = roll_sum(new_cases, n=var_tau, align="right", fill = c(NA, NA, NA))
+                denominator = head(c(rep(NA, var_D), tau_sum), var_D*-1)
                 denominator = replace(denominator, which(denominator == 0), NA)
-                R_mean = weekly_sum/denominator
-                R_sd = sqrt(R_mean/denominator)
-                R_Quantile_025 = qnorm(0.025, mean = R_mean, sd = R_sd)
-                R_Quantile_975 = qnorm(0.975, mean = R_mean, sd = R_sd)
+                R_mean = tau_sum/denominator
+                k = tau_sum
+                theta = R_mean/k
                 
-                df = data.frame(
-                    date = dates - var_D,
-                    R_mean,
-                    R_Quantile_025,
-                    R_Quantile_975
-                )
-            } else if (method == "RKI") {
-                generation_time_sum = roll_sum(new_cases, n=var_D, align="right", fill = c(NA, NA, NA))
-                denominator = head(c(rep(NA, var_D), generation_time_sum), var_D*-1)
-                denominator = replace(denominator, which(denominator == 0), NA)
-                R_mean = generation_time_sum/denominator
-                R_sd = sqrt(R_mean/denominator)
-                R_Quantile_025 = qnorm(0.025, mean = R_mean, sd = R_sd)
-                R_Quantile_975 = qnorm(0.975, mean = R_mean, sd = R_sd)
+                R_Quantile_025 = qgamma(0.025, shape = k, scale = theta)
+                R_Quantile_975 = qgamma(0.975, shape = k, scale = theta)
                 
-                df = data.frame(
-                    date = dates - var_D,
-                    R_mean,
-                    R_Quantile_025,
-                    R_Quantile_975
-                )
-            }
-            
-            else {
-              warning("method must be one of Cori, TD, or SB")  
+                df = data.frame(date = dates - var_D, 
+                                R_mean, 
+                                R_Quantile_025, 
+                                R_Quantile_975)
+            } else {
+                warning("method must be one of Cori, TD, or SB")  
             }
         
             colnames(df)[2:4] = paste(method, colnames(df)[2:4], sep=".")
@@ -307,12 +332,12 @@ server <- function(input, output, clientData, session) {
             nest(CD = -c(region, region_type, regionID, regionID_type)) %>%
             mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="KN"))) %>%
             mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
-            mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="RKI"))) %>%
-            mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
             mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="Cori"))) %>%
             mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
             mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="TD"))) %>%
             mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
+              # mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="EG"))) %>%
+              # mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
             dplyr::select(region, region_type, regionID, regionID_type, CD) %>%
             unnest(CD) %>% 
             ungroup()
@@ -598,25 +623,31 @@ server <- function(input, output, clientData, session) {
         }
     })
     
-    observeEvent(input$plot_R.hover, {
+    observeEvent(input$plot_R.hover, ignoreNULL = F, {
         
         data = data()
         hover_info = input$plot_R.hover
-        hover.date = as.Date(hover_info$x, origin="1970-01-01")
         
-        output$secondary_plot = renderPlot({
+        if(!is.null(hover_info)) {
+          
+          # Get date associated with hover location
+          hover.date = as.Date(hover_info$x, origin="1970-01-01")
+          
+          # Mak a vertical line in the other plot
+          output$secondary_plot = renderPlot({
             if(secondary_plot$p == "total_cases") {
-                plot_TotalCases() + geom_vline(xintercept = hover.date)
+              plot_TotalCases() + geom_vline(xintercept = hover.date)
             } else {
-                plot_NewCases() + geom_vline(xintercept = hover.date)
+              plot_NewCases() + geom_vline(xintercept = hover.date)
             }    
-        })
-        
-        if(nrow(data) > 0) {
+          })
+          
+          # If there is associated data then print in information window
+          if(nrow(data) > 0) {
             
             data = data %>% filter(date == as.character(hover.date)) %>%
-                dplyr::select(date, region, contains(input$R_type)) %>%
-                mutate_if(is.numeric, round, digits=2)
+              dplyr::select(date, region, contains(input$R_type)) %>%
+              mutate_if(is.numeric, round, digits=2)
             data = data %>% pivot_longer(-c(1:2), names_to = c("R_type", ".value"), names_sep = "\\.")
             colnames(data) = gsub("R_", "", colnames(data))
             colnames(data)[3] = "R Estimation"
@@ -632,34 +663,44 @@ server <- function(input, output, clientData, session) {
             data = as.data.frame(data)
             
             output$Plot_Info <- renderPrint({ 
-                print("Hover mouse over plot for more info")
-                print("Click-and-Drag to select a plot area.")
-                print("Double-click to zoom in and out.")
-                
-                if(any(!(input$geographic_location %in% unique(data$region)))) {
-                    regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
-                    regions_without_data = paste(regions_without_data, sep=", ")
-                    warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
-                    print("***********************************")
-                    print("*             WARNING             *")
-                    print("***********************************")
-                    print(warning_annotation)
-                }
-                
+              print("Hover mouse over plot for more info")
+              print("Click-and-Drag to select a plot area.")
+              print("Double-click to zoom in and out.")
+              
+              if(any(!(input$geographic_location %in% unique(data$region)))) {
+                regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+                regions_without_data = paste(regions_without_data, sep=", ")
+                warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
                 print("***********************************")
-                print("* INFROMATION FROM MOUSE POSITION *")
+                print("*             WARNING             *")
                 print("***********************************")
-                
-                print(paste("Date:", data$date[1]))
-                
-                data = split(data, f=data$region)
-                data = map(data, function(x) x %>% dplyr::select(`R Estimation`, mean, `95% CI`))
-                for(i in seq_along(data)) {
-                    print(names(data)[i])
-                    print(data[[i]])
-                }
+                print(warning_annotation)
+              }
+              
+              print("***********************************")
+              print("* INFROMATION FROM MOUSE POSITION *")
+              print("***********************************")
+              
+              print(paste("Date:", data$date[1]))
+              
+              data = split(data, f=data$region)
+              data = map(data, function(x) x %>% dplyr::select(`R Estimation`, mean, `95% CI`))
+              for(i in seq_along(data)) {
+                print(names(data)[i])
+                print(data[[i]])
+              }
             })
-        } else {
+          }
+        } else { 
+            
+            output$secondary_plot = renderPlot({
+              if(secondary_plot$p == "total_cases") {
+                plot_TotalCases()
+              } else {
+                plot_NewCases()
+              }    
+            })
+            
             output$Plot_Info <- renderPrint({ 
                 print("Hover mouse over plot for more info")
                 print("Click-and-Drag to select a plot area.")
@@ -678,47 +719,53 @@ server <- function(input, output, clientData, session) {
         }
     })
     
-    observeEvent(input$secondary_plot.hover, {
+    observeEvent(input$secondary_plot.hover, ignoreNULL = F, {
         
         data = data()
         hover_info = input$secondary_plot.hover
-        hover.date = as.Date(hover_info$x, origin="1970-01-01")
         
-        output$plot_R = renderPlot({
+        if(!is.null(hover_info)) {
+          hover.date = as.Date(hover_info$x, origin="1970-01-01")
+          
+          output$plot_R = renderPlot({
             plot_R() + geom_vline(xintercept = hover.date)
-        })
-        
-        if(nrow(data) > 0) {
+          })
+          
+          if(nrow(data) > 0) {
             
             data = data %>% filter(date == as.character(hover.date)) %>%
-                dplyr::select(region, total_cases, new_cases) %>%
-                mutate_if(is.numeric, round, digits=2)
+              dplyr::select(region, total_cases, new_cases) %>%
+              mutate_if(is.numeric, round, digits=2)
             
             data = as.data.frame(data)
             
             output$Plot_Info <- renderPrint({ 
-                print("Hover mouse over plot for more info")
-                print("Click-and-Drag to select a plot area.")
-                print("Double-click to zoom in and out.")
-                
-                if(any(!(input$geographic_location %in% unique(data$region)))) {
-                    regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
-                    regions_without_data = paste(regions_without_data, sep=", ")
-                    warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
-                    print("***********************************")
-                    print("*             WARNING             *")
-                    print("***********************************")
-                    print(warning_annotation)
-                }
-                
+              print("Hover mouse over plot for more info")
+              print("Click-and-Drag to select a plot area.")
+              print("Double-click to zoom in and out.")
+              
+              if(any(!(input$geographic_location %in% unique(data$region)))) {
+                regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+                regions_without_data = paste(regions_without_data, sep=", ")
+                warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
                 print("***********************************")
-                print("* INFROMATION FROM MOUSE POSITION *")
+                print("*             WARNING             *")
                 print("***********************************")
-                
-                print(paste("Date:", hover.date))
-                print(data)
+                print(warning_annotation)
+              }
+              
+              print("***********************************")
+              print("* INFROMATION FROM MOUSE POSITION *")
+              print("***********************************")
+              
+              print(paste("Date:", hover.date))
+              print(data)
             })
+          }
         } else {
+          
+            output$plot_R = renderPlot({plot_R()})
+          
             output$Plot_Info <- renderPrint({ 
                 print("Hover mouse over plot for more info")
                 print("Click-and-Drag to select a plot area.")
@@ -755,24 +802,40 @@ server <- function(input, output, clientData, session) {
     observe({shinyjs::onclick("node8", runjs(clean_node_js[1]))})
     observe({shinyjs::onclick("node9", runjs(clean_node_js[2]))})
     observe({shinyjs::onclick("node10", runjs(clean_node_js[3]))})
+    observe({shinyjs::onclick("node11", runjs(geo_node_js))})
+    observe({shinyjs::onclick("node12", runjs(smooth_node_js))})
+    observe({shinyjs::onclick("node13", runjs(simpleR_node_js))})
+    observe({shinyjs::onclick("node14", runjs(coriR_node_js))})
+    observe({shinyjs::onclick("node15", runjs(wtR_node_js))})
+    observe({shinyjs::onclick("node16", runjs(estimateR_mainnode_js))})
+    
     
     # Load graphviz
     output$graphV <- renderGrViz({ 
-        grViz("
+      grViz("
     digraph a_nice_graph {
     
       # a 'graph' statement
       graph [compound = true, nodesep = .5, ranksep = .25, color = crimson, fontsize = 10]
-    
-      # several 'node' statements
+      
       node [shape = box, fontname = Helvetica]
+      '@@1'; '@@2'; '@@3'; '@@4'; '@@5'; '@@6'; 
+      '@@7'; '@@8'; '@@9'; '@@10'; '@@11'; '@@12';
+      '@@14'; '@@15'; '@@16'; 
+      
+      # several 'node' statements
+      node [shape = plaintext, fontname = Helvetica]
+      '@@13';
+      
+      node [shape = oval, fontname = Helvetica, x = 100]
+      '@@17', '@@18';
       
       # edge definitions with the node IDs
       '@@1' -> '@@2';
       '@@3' -> '@@4';
-      '@@5' -> '@@6' 
+      '@@5' -> '@@6';
       
-      {'@@2','@@4','@@6'} -> '@@7'
+      {'@@2','@@4','@@6'} -> '@@7';
       
       subgraph cluster0 {
         label = 'Clean Data';
@@ -781,20 +844,34 @@ server <- function(input, output, clientData, session) {
       }
       
       '@@7' -> '@@8'    [lhead = cluster0];
+      
+      '@@10' -> '@@11' -> '@@12' -> '@@13' -> {'@@14' '@@15' '@@16'};
+      
+      '@@17' -> '@@13';
+      '@@18' -> '@@13';
     }
       
     [1]: 'Download US county data table \\n from NYT'
-    [3]: 'Download US state data table \\n from covidtracking.com'
-    [5]: 'Download country data table from \\n covid.ourworldindata.org'
     [2]: 'Standardize US county data'
+    [3]: 'Download US state data table \\n from covidtracking.com'
     [4]: 'Standardize US State data'
+    [5]: 'Download country data table from \\n covid.ourworldindata.org'
     [6]: 'Standardize Country data'
     [7]: 'Bind data into one table'
     [8]: 'For each region, remove leading dates where \\n  the number of total cases is unknown or 0'
     [9]: 'For each region, remove dates that have \\n greater number of total cases than a future date'
     [10]: 'Interprolate total cases for dates that were removed'
+    [11]: 'Select a geographic area'
+    [12]: 'Smooth data with a rolling mean' 
+    [13]: 'Estimate R'
+    [14]: 'Estimate R with Simple Ratio method'
+    [15]: 'Estimate R with Cori et al (2013) method'
+    [16]: 'Estimate R with Wallinga and Teunis (2004) method'
+    [17]: 'Define \\n Serial/Generational \\n Interval Distribution' 
+    [18]: 'Define \\n Time Window for estimating R' 
     ")
     })
+    
 }
 
 # Run the application 
