@@ -81,7 +81,10 @@ ui <- fluidPage(
     navbarPage("R Estimator",
         tabPanel("Main", fluid = TRUE,
             fluidRow(
-                tags$span("Here we show multiple methods of estimating the effective reproduction number (R)"),
+                tags$span("Here we show multiple methods of estimating the effective reproduction number (R) for the SARS-CoV-2 infection. 
+                           The R value is the the average number an infected person will infect. If the R is greater than 1, then the epidemic is growing.
+                           However, if R is less than one, the the epidemic is shrinking. The R value is influence by both biological factors (e.g. 
+                           how the virus infects and spreads) as well as social factors (e.g. social distancing and masking wearing)"),
                 tags$b("Note: We have made assumptions in calculating this R values. 
                        Neither those assumptions or the code for this tool have been peer-reviewed"),
                 tags$span("We will be adding information on the code and how these R estimations are calculated soon."),
@@ -195,7 +198,19 @@ ui <- fluidPage(
         tabPanel("About", fluid = TRUE, 
             tags$p("Code for app by Arya Zandvakili MD, PhD"),
             tags$p("Conception of app by Elon Kohlberg PhD, Abraham Neyman PhD, and Gavriel Kohlberg MD"),
-            tags$b("References:")
+            tags$b("References:"),
+            tags$ol(
+              tags$li("Wallinga J & Teunis P. Different Epidemic Curves for Severe Acute Respiratory Syndrome Reveal Similar Impacts of Control Measures. 2004. American Journal of Epidemiology.",
+                      tags$a(href = "dx.doi.org/10.1093/aje/kwh255", "dx.doi.org/10.1093/aje/kwh255")), 
+              tags$li("Cori et al. A New Framework and Software to Estimate Time-Varying Reproduction Numbers During Epidemics. 2013.", 
+                      tags$a(href = "dx.doi.org/10.1093/aje/kwt133", "dx.doi.org/10.1093/aje/kwt133"))
+            ), 
+            tags$b("Data Sources:"),
+            tags$ol(
+              tags$li(tags$a(href = "https://github.com/nytimes/covid-19-data", "New York Times"), "for US county level data"), 
+              tags$li(tags$a(href = "Covidtracking.com", "Covidtracking.com"), "for US state level data"),
+              tags$li(tags$a(href = "Covid.ourworldindata.org", "Covid.ourworldindata.org"), "for country level data")
+            )
         )
     )
 )   
