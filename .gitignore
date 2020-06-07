@@ -2,12 +2,11 @@
 .Rhistory
 .RData
 .Ruserdata
-./rsconnect/*
-rsconnect
+
+
 simplified_r_statistic/rsconnect/*
 presentation/*.pdf
 presentation/*.html
-./simplified_r_statistic/case_data.csv
 simplified_r_statistic/case_data.csv
+simplified_r_statistic/*.html
 scratch/*
-scratch
