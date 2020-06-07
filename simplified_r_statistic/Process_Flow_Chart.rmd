@@ -1,0 +1,73 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r echo=F, message=F, warning=F}
+library("DiagrammeR")
+
+grViz("
+  digraph a_nice_graph {
+  
+    # a 'graph' statement
+    graph [compound = true, nodesep = .5, ranksep = .25, color = crimson, fontsize = 10]
+    
+    node [shape = box, fontname = Helvetica]
+    '@@1'; '@@2'; '@@3'; '@@4'; '@@5'; '@@6'; 
+    '@@7'; '@@8'; '@@9'; '@@10'; '@@11'; '@@12';
+    '@@14'; '@@15'; '@@16'; 
+    
+    # several 'node' statements
+    node [shape = plaintext, fontname = Helvetica]
+    '@@13';
+    
+    node [shape = oval, fontname = Helvetica, x = 100]
+    '@@17', '@@18';
+    
+    # edge definitions with the node IDs
+    '@@1' -> '@@2';
+    '@@3' -> '@@4';
+    '@@5' -> '@@6';
+    
+    {'@@2','@@4','@@6'} -> '@@7';
+    
+    subgraph cluster0 {
+      label = 'Clean Data';
+      fontsize = 10;
+      '@@8' -> '@@9' -> '@@10';
+    }
+    
+    '@@7' -> '@@8'    [lhead = cluster0];
+    
+    '@@10' -> '@@11' -> '@@12' -> '@@13' -> {'@@14' '@@15' '@@16'};
+    
+    '@@17' -> '@@13';
+    '@@18' -> '@@13';
+  }
+    
+  [1]: 'Download US county data table \\n from NYT'
+  [2]: 'Standardize US county data'
+  [3]: 'Download US state data table \\n from covidtracking.com'
+  [4]: 'Standardize US State data'
+  [5]: 'Download country data table from \\n covid.ourworldindata.org'
+  [6]: 'Standardize Country data'
+  [7]: 'Bind data into one table'
+  [8]: 'For each region, remove leading dates where \\n  the number of total cases is unknown or 0'
+  [9]: 'For each region, remove dates that have \\n greater number of total cases than a future date'
+  [10]: 'Interprolate total cases for dates that were removed'
+  [11]: 'Select geographic area(s)'
+  [12]: 'Smooth data with a rolling mean' 
+  [13]: 'Estimate R'
+  [14]: 'Estimate R with Simple Ratio method'
+  [15]: 'Estimate R with Cori et al (2013) method'
+  [16]: 'Estimate R with Wallinga and Teunis (2004) method'
+  [17]: 'Define \\n Serial/Generational \\n Interval Distribution' 
+  [18]: 'Define \\n Time Window for estimating R' 
+")
+```
+

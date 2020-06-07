@@ -13,7 +13,6 @@ library(ggpubr)
 library(RcppRoll)
 library(EpiEstim)
 library(R0)
-library(DiagrammeR)
 library(shinyjs)
 
 # ****************
@@ -80,18 +79,7 @@ ui <- fluidPage(
     # Application title
     navbarPage("R Estimator",
         tabPanel("Main", fluid = TRUE,
-            fluidRow(
-                tags$span("Here we show multiple methods of estimating the effective reproduction number (R) for the SARS-CoV-2 infection. 
-                           The R value is the the average number an infected person will infect. If the R is greater than 1, then the epidemic is growing.
-                           However, if R is less than one, the the epidemic is shrinking. The R value is influence by both biological factors (e.g. 
-                           how the virus infects and spreads) as well as social factors (e.g. social distancing and masking wearing)"),
-                tags$b("Note: We have made assumptions in calculating this R values. 
-                       Neither those assumptions or the code for this tool have been peer-reviewed"),
-                tags$span("We will be adding information on the code and how these R estimations are calculated soon."),
-                tags$br(),
-                tags$br()
-                
-            ),
+            fluidRow(includeMarkdown("Introduction.md")),
             
             # ---------------
             # Controls
@@ -184,34 +172,20 @@ ui <- fluidPage(
                
                fixedRow(
                    verbatimTextOutput("Plot_Info")
+               ),
+               
+               fixedRow(
+                   uiOutput("Last_Update")
                )
             )
         ), 
         tabPanel("Code", fluid = TRUE,
-                 tags$head(
-                     tags$style(HTML(".node:hover polygon {fill: red;} .node {cursor:pointer}"))
-                 ),
+                 tags$head(tags$style(HTML(".node:hover polygon {fill: red;} .node {cursor:pointer}"))),
                  useShinyjs(),
-                 column(6, grVizOutput('graphV')),
+                 column(6, uiOutput('flow_chart')),
                  column(6, uiOutput("md_file", style = "overflow-y:scroll; max-height: 600px"))
         ), 
-        tabPanel("About", fluid = TRUE, 
-            tags$p("Code for app by Arya Zandvakili MD, PhD"),
-            tags$p("Conception of app by Elon Kohlberg PhD, Abraham Neyman PhD, and Gavriel Kohlberg MD"),
-            tags$b("References:"),
-            tags$ol(
-              tags$li("Wallinga J & Teunis P. Different Epidemic Curves for Severe Acute Respiratory Syndrome Reveal Similar Impacts of Control Measures. 2004. American Journal of Epidemiology.",
-                      tags$a(href = "dx.doi.org/10.1093/aje/kwh255", "dx.doi.org/10.1093/aje/kwh255")), 
-              tags$li("Cori et al. A New Framework and Software to Estimate Time-Varying Reproduction Numbers During Epidemics. 2013.", 
-                      tags$a(href = "dx.doi.org/10.1093/aje/kwt133", "dx.doi.org/10.1093/aje/kwt133"))
-            ), 
-            tags$b("Data Sources:"),
-            tags$ol(
-              tags$li(tags$a(href = "https://github.com/nytimes/covid-19-data", "New York Times"), "for US county level data"), 
-              tags$li(tags$a(href = "Covidtracking.com", "Covidtracking.com"), "for US state level data"),
-              tags$li(tags$a(href = "Covid.ourworldindata.org", "Covid.ourworldindata.org"), "for country level data")
-            )
-        )
+        tabPanel("About", fluid = TRUE, includeMarkdown("About.md"))
     )
 )   
 
@@ -804,7 +778,10 @@ server <- function(input, output, clientData, session) {
     #------------
     
     # Load html
-    output$md_file <- renderUI({includeMarkdown("Code_Explanation.html")})
+    output$md_file <- renderUI({includeHTML("Code_Explanation.html")})
+    
+    # Load graphviz flowchart
+    output$flow_chart <- renderUI({includeHTML("Process_Flow_Chart.html")}) 
     
     # Click functions on graphviz nodes
     observe({shinyjs::onclick("node1", runjs(download_node_js))})
@@ -824,69 +801,13 @@ server <- function(input, output, clientData, session) {
     observe({shinyjs::onclick("node15", runjs(wtR_node_js))})
     observe({shinyjs::onclick("node16", runjs(estimateR_mainnode_js))})
     
+    #-----------
+    # Update Info
+    # -----------
     
-    # Load graphviz
-    output$graphV <- renderGrViz({ 
-      grViz("
-    digraph a_nice_graph {
-    
-      # a 'graph' statement
-      graph [compound = true, nodesep = .5, ranksep = .25, color = crimson, fontsize = 10]
-      
-      node [shape = box, fontname = Helvetica]
-      '@@1'; '@@2'; '@@3'; '@@4'; '@@5'; '@@6'; 
-      '@@7'; '@@8'; '@@9'; '@@10'; '@@11'; '@@12';
-      '@@14'; '@@15'; '@@16'; 
-      
-      # several 'node' statements
-      node [shape = plaintext, fontname = Helvetica]
-      '@@13';
-      
-      node [shape = oval, fontname = Helvetica, x = 100]
-      '@@17', '@@18';
-      
-      # edge definitions with the node IDs
-      '@@1' -> '@@2';
-      '@@3' -> '@@4';
-      '@@5' -> '@@6';
-      
-      {'@@2','@@4','@@6'} -> '@@7';
-      
-      subgraph cluster0 {
-        label = 'Clean Data';
-        fontsize = 10;
-        '@@8' -> '@@9' -> '@@10';
-      }
-      
-      '@@7' -> '@@8'    [lhead = cluster0];
-      
-      '@@10' -> '@@11' -> '@@12' -> '@@13' -> {'@@14' '@@15' '@@16'};
-      
-      '@@17' -> '@@13';
-      '@@18' -> '@@13';
-    }
-      
-    [1]: 'Download US county data table \\n from NYT'
-    [2]: 'Standardize US county data'
-    [3]: 'Download US state data table \\n from covidtracking.com'
-    [4]: 'Standardize US State data'
-    [5]: 'Download country data table from \\n covid.ourworldindata.org'
-    [6]: 'Standardize Country data'
-    [7]: 'Bind data into one table'
-    [8]: 'For each region, remove leading dates where \\n  the number of total cases is unknown or 0'
-    [9]: 'For each region, remove dates that have \\n greater number of total cases than a future date'
-    [10]: 'Interprolate total cases for dates that were removed'
-    [11]: 'Select a geographic area'
-    [12]: 'Smooth data with a rolling mean' 
-    [13]: 'Estimate R'
-    [14]: 'Estimate R with Simple Ratio method'
-    [15]: 'Estimate R with Cori et al (2013) method'
-    [16]: 'Estimate R with Wallinga and Teunis (2004) method'
-    [17]: 'Define \\n Serial/Generational \\n Interval Distribution' 
-    [18]: 'Define \\n Time Window for estimating R' 
-    ")
+    output$Last_Update <- renderUI({
+        includeHTML("Update.html")
     })
-    
 }
 
 # Run the application 

@@ -1,0 +1,23 @@
+---
+title: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r echo=F, message=F, warning=F}
+time_1 = file.info("case_data.csv")
+time_1 = time_1$mtime
+
+files_in_folder = list.files()
+md_files = files_in_folder[grep("md$", files_in_folder)]
+time_2 = file.info(c("app.R", md_files))
+time_2 = max(time_2$mtime)
+```
+
+*Last Data Update*: `r time_1`
+
+*Last App Update*: `r time_2`
