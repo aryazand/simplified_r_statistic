@@ -120,8 +120,8 @@ ui <- fluidPage(
                     
                     checkboxGroupInput(inputId = "R_type", 
                                        label = "Select Method of R Calculation",
-                                       choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)"),
-                                       choiceValues = c("KN", "Cori", "TD"),
+                                       choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)", "Wallinga & Lipsitch (2007)"),
+                                       choiceValues = c("KN", "Cori", "TD", "WL"),
                                        inline = T,
                                        selected = "KN"),
                     
@@ -239,94 +239,20 @@ server <- function(input, output, clientData, session) {
         # Calculate R by published methods
         #---------------------------------
         
-        estimate.R_helper = function(dates, new_cases, nsim=1000, method=c("KN", "Cori", "TD", "EG")) {
-            
-            if(method  == "TD") {
-              
-                #filter out leading 0 from new_cases
-                mGT = generation.time("gamma", c(var_D, var_D_sd))
-                names(new_cases) = dates
-                r_estimates = estimate.R(new_cases, GT = mGT, begin=1, end=as.numeric(length(new_cases)), 
-                                         methods=method, nsim=nsim)
-                
-                df = data.frame(
-                    date = seq.Date(as.Date(r_estimates$estimates[[1]]$begin, origin="1970-01-01"), 
-                                    length.out = length(r_estimates$estimates[[1]]$R), by = 1),
-                    R_mean = r_estimates$estimates[[1]]$R,
-                    R_Quantile_025 = r_estimates$estimates[[1]]$conf.int[[1]],
-                    R_Quantile_975 = r_estimates$estimates[[1]]$conf.int[[2]]
-                ) 
-                
-                # for some reason last R estimate from TD always ends up as 0. So we'll remove that
-                df = df[-c(1, nrow(df)),]
-                
-            } else if(method  == "EG") {
-              
-              #filter out leading 0 from new_cases
-              mGT = generation.time("gamma", c(var_D, var_D_sd))
-              names(new_cases) = dates
-              r_estimates = estimate.R(new_cases, GT = mGT, begin=1, end=as.numeric(length(new_cases)), 
-                                       methods=method, nsim=nsim)
-              
-              df = data.frame(
-                date = seq.Date(as.Date(r_estimates$estimates[[1]]$begin, origin="1970-01-01"), 
-                                length.out = length(r_estimates$estimates[[1]]$R), by = 1),
-                R_mean = r_estimates$estimates[[1]]$R,
-                R_Quantile_025 = r_estimates$estimates[[1]]$conf.int[[1]],
-                R_Quantile_975 = r_estimates$estimates[[1]]$conf.int[[2]]
-              ) 
-              
-              # for some reason last R estimate from TD always ends up as 0. So we'll remove that
-              df = df[-c(1, nrow(df)),]
-              
-            } else if(method == "Cori") {
-                r_estimates = estimate_R(new_cases, method = "parametric_si", config = make_config(list(mean_si = var_D, 
-                                                                 std_si = var_D_sd,
-                                                                 t_start = seq(2, length(new_cases) - var_tau + 1),
-                                                                 t_end = seq(var_tau+1, length(new_cases))))
-                                )
-                df = data.frame(
-                    date = tail(dates, -var_tau) - var_tau,
-                    R_mean = r_estimates$R$`Mean(R)`,
-                    R_Quantile_025 = r_estimates$R$`Quantile.0.025(R)`,
-                    R_Quantile_975 = r_estimates$R$`Quantile.0.975(R)`
-                )  
-            } else if(method == "KN") {
-                tau_sum = roll_sum(new_cases, n=var_tau, align="right", fill = c(NA, NA, NA))
-                denominator = head(c(rep(NA, var_D), tau_sum), var_D*-1)
-                denominator = replace(denominator, which(denominator == 0), NA)
-                R_mean = tau_sum/denominator
-                k = tau_sum
-                theta = R_mean/k
-                
-                R_Quantile_025 = qgamma(0.025, shape = k, scale = theta)
-                R_Quantile_975 = qgamma(0.975, shape = k, scale = theta)
-                
-                df = data.frame(date = dates - var_D, 
-                                R_mean, 
-                                R_Quantile_025, 
-                                R_Quantile_975)
-            } else {
-                warning("method must be one of Cori, TD, or SB")  
-            }
-        
-            colnames(df)[2:4] = paste(method, colnames(df)[2:4], sep=".")
-            
-            return(df)
-        }
+        source("./Estimate_R_Functions.R")
     
         data <- data %>%
             arrange(date) %>%
             group_by(region, region_type, regionID, regionID_type) %>%
             nest(CD = -c(region, region_type, regionID, regionID_type)) %>%
-            mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="KN"))) %>%
+            mutate(estimateR = map(CD, function(CD_) EstimateR.simple(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, tau = var_tau))) %>%
             mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
-            mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="Cori"))) %>%
+            mutate(estimateR = map(CD, function(CD_) EstimateR.cori(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
             mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
-            mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="TD"))) %>%
+            mutate(estimateR = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
             mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
-              # mutate(estimateR = map(CD, function(CD_) estimate.R_helper(CD_$date, CD_$new_cases_smoothed, method="EG"))) %>%
-              # mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
+            mutate(estimateR = map(CD, function(CD_) EstimateR.WL(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+            mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
             dplyr::select(region, region_type, regionID, regionID_type, CD) %>%
             unnest(CD) %>% 
             ungroup()
@@ -408,7 +334,7 @@ server <- function(input, output, clientData, session) {
                 ymin = paste(R_type, "R_Quantile_025", sep=".")
                 ymax = paste(R_type, "R_Quantile_975", sep=".")
                 
-                linetypes = c(KN = 1, Cori = 2, TD = 3, RKI = 4)
+                linetypes = c(KN = 1, Cori = 2, TD = 3, WL = 4)
                 l = linetypes[R_type == names(linetypes)]
 
                 p = p +
@@ -647,7 +573,7 @@ server <- function(input, output, clientData, session) {
             data$`R Estimation` = fct_recode(data$`R Estimation`, Simple = "KN", 
                                              `Cori et al (2013)` = "Cori", 
                                              `Wallinga & Teunis (2004)` = "TD",
-                                             `RKI (2020)` = "RKI")
+                                             `Wallinga & Lipsitch (2007)`  = "WT")
             
             data = as.data.frame(data)
             
