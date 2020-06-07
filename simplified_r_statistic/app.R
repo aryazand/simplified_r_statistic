@@ -778,7 +778,7 @@ server <- function(input, output, clientData, session) {
     #------------
     
     # Load html
-    output$md_file <- renderUI({includeHTML("Code_Explanation.html")})
+    output$md_file <- renderUI({withMathJax(includeHTML("Code_Explanation.html"))})
     
     # Load graphviz flowchart
     output$flow_chart <- renderUI({includeHTML("Process_Flow_Chart.html")}) 
