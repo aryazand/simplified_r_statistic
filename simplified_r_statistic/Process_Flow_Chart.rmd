@@ -20,7 +20,7 @@ grViz("
     node [shape = box, fontname = Helvetica]
     '@@1'; '@@2'; '@@3'; '@@4'; '@@5'; '@@6'; 
     '@@7'; '@@8'; '@@9'; '@@10'; '@@11'; '@@12';
-    '@@14'; '@@15'; '@@16'; 
+    '@@14'; '@@15'; '@@16'; '@@19';
     
     # several 'node' statements
     node [shape = plaintext, fontname = Helvetica]
@@ -44,7 +44,7 @@ grViz("
     
     '@@7' -> '@@8'    [lhead = cluster0];
     
-    '@@10' -> '@@11' -> '@@12' -> '@@13' -> {'@@14' '@@15' '@@16'};
+    '@@10' -> '@@11' -> '@@12' -> '@@13' -> {'@@14' '@@15' '@@16' '@@19'};
     
     '@@17' -> '@@13';
     '@@18' -> '@@13';
@@ -68,6 +68,7 @@ grViz("
   [16]: 'Estimate R with Wallinga and Teunis (2004) method'
   [17]: 'Define \\n Serial/Generational \\n Interval Distribution' 
   [18]: 'Define \\n Time Window for estimating R' 
+  [19]: 'Estimate R with Wallinga and Lipsitch (2007) method'
 ")
 ```
 
