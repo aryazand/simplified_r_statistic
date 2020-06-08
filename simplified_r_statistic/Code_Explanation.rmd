@@ -276,7 +276,7 @@ We do this in R with the following code:
 ```{r Simple-R-Estimate}
 ```
 
-```{r warning=F, message=F}
+```{r echo=F, warning=F, message=F}
 
 simpleR.df = EstimateR.simple(date = data$date, Is = data$new_cases_smoothed, si_mean = var.si_mean, tau = var.tau)
 
@@ -308,7 +308,7 @@ Where $w_s$ is a probability distribution of how infectious individuals are at t
 ```{r Cori-R-Estimate}
 ```
 
-```{r warning=F, message=F}
+```{r echo=F, warning=F, message=F}
 coriR.df = EstimateR.cori(date = data$date, Is = data$new_cases_smoothed, si_mean = var.si_mean, si_sd = var.si_sd, tau = var.tau)
 
 df = left_join(data, coriR.df, by="date")
@@ -328,7 +328,7 @@ ggplot(df) +
 ```{r WT-R-Estimate}
 ```
 
-```{r message=F, warning=F}
+```{r echo=F, message=F, warning=F}
 WT.df = EstimateR.WT(date = data$date, Is = data$new_cases_smoothed, si_mean = var.si_mean, si_sd = var.si_sd)
 
 df = left_join(data, WT.df, by="date")
@@ -349,7 +349,7 @@ ggplot(df) +
 ```{r WL-R-Estimate}
 ```
 
-```{r message=F, warning=F}
+```{r echo=F, message=F, warning=F}
 WL.df = EstimateR.WL(date = data$date, Is = data$new_cases_smoothed, si_mean = var.si_mean, si_sd = var.si_sd, tau=7)
 
 df = left_join(data, WL.df, by="date")
