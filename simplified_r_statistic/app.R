@@ -22,6 +22,51 @@ library(shinyjs)
 DATA = read_csv("./case_data.csv", col_types = "ccccDddl")
 
 # ****************
+# Initial data to display
+# ****************
+
+data <- DATA %>% filter(region == "World")
+
+#---------------------
+# Establish Parameters
+#----------------------
+var_tau = 7
+var_D = 4
+var_D_sd = 3
+
+#---------------------
+# Smooth Data
+#----------------------
+
+data = data %>%
+  group_by(region, region_type, regionID, regionID_type) %>%
+  mutate(new_cases_smoothed = roll_mean(new_cases, n = 7, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
+  mutate(new_cases_smoothed = replace(new_cases_smoothed, is.na(new_cases_smoothed), new_cases[is.na(new_cases_smoothed)])) %>%
+  ungroup()
+
+data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
+
+data = data %>% 
+  filter(!is.na(new_cases_smoothed)) %>%
+  group_by(region, region_type, regionID, regionID_type) %>%
+  mutate(reference_date = date[min(which((new_cases_smoothed > 0)))]) %>%
+  filter(date >= reference_date) %>%
+  dplyr::select(-reference_date) %>%
+  ungroup()
+
+# Calculate Simple R by default
+
+data <- data %>%
+  arrange(date) %>%
+  group_by(region, region_type, regionID, regionID_type) %>%
+  nest(CD = -c(region, region_type, regionID, regionID_type)) %>% 
+  mutate(estimateR = map(CD, function(CD_) EstimateR.simple(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, tau = var_tau))) %>%
+  mutate(CD = map2(CD, estimateR, left_join, by="date")) %>% 
+  unnest(CD) %>% 
+  ungroup() %>%
+  dplyr::select(-estimateR)
+
+# ****************
 # Javascript Functions
 # ****************
 
@@ -103,12 +148,13 @@ ui <- fluidPage(
                 wellPanel(
                     
                     tags$h4("Smooth Daily New Cases"),
+                    tags$p("Smooth new cases per day with a rolling mean to reduce noise", style="font-size:85%"),
                     
                     sliderInput(inputId = "smoothing_window",
                                 label = "Smoothing Window Size",
                                 min = 1, max = 14, value = 7, step = 1),
                     
-                    tags$h4("Parameters for R calculation"),
+                    tags$h4("Method for Estimating R"),
                     
                     tags$head(
                         tags$style(
@@ -125,17 +171,25 @@ ui <- fluidPage(
                                        inline = T,
                                        selected = "KN"),
                     
+                    tags$h4("Define Parameters of Generation Interval"),
+                    tags$p("Generation Inteval is the time different between when one person is infected to when they cause an infection in another person. 
+                           All methods of estimating R dependent on this interval", style="font-size:85%"),
+                    
                     sliderInput(inputId = "var.si_mean",
-                                label = "Mean Serial Interval (days)",
+                                label = "Mean Generation Interval (days)",
                                 min = 1, max = 10, value = 4, step = 1),
                     
                     sliderInput(inputId = "var.si_sd",
-                                label = "Standard Deviation of Serial Interval (days)",
+                                label = "Standard Deviation of Generation Interval (days)",
                                 min = 1, max = 10, value = 3, step = 1),
                     
+                    tags$h4("Period Size for Estimating R"),
+                    
+                    tags$p("When estimating R we compare the number of new cases in two successive periods of time.", style="font-size:85%"),
+                    
                     sliderInput(inputId = "var.window_size",
-                                label = "Window Size",
-                                min = 2, max = 14, value = 7, step = 1)
+                                label = "Period Size",
+                                min = 1, max = 14, value = 7, step = 1)
                 )
             ),
         
@@ -201,7 +255,16 @@ server <- function(input, output, clientData, session) {
     # Update Data
     # ----------
     
-    data <- reactive({
+    data_holder <- reactiveValues(data = data)
+  
+    observeEvent({
+      c(input$geographic_location,
+      input$smoothing_window,
+      input$var.window_size,
+      input$var.si_mean,
+      input$var.si_sd,
+      input$var.tau)
+    },{
         data <- DATA %>% 
             filter(region %in% input$geographic_location) %>%
             mutate(region = factor(region, levels=c(input$geographic_location)))
@@ -214,8 +277,8 @@ server <- function(input, output, clientData, session) {
         # Establish Parameters
         #----------------------
         var_tau = input$var.window_size # Window size
-        var_D = input$var.si_mean  # Mean serial interval 
-        var_D_sd = input$var.si_sd # SD in serial interval
+        var_D = input$var.si_mean  # Mean generation interval 
+        var_D_sd = input$var.si_sd # SD in generation interval
         
         #---------------------
         # Smooth Data
@@ -245,50 +308,80 @@ server <- function(input, output, clientData, session) {
           nest(CD = -c(region, region_type, regionID, regionID_type)) %>% 
           mutate(estimateR = map(CD, function(CD_) EstimateR.simple(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, tau = var_tau))) %>%
           mutate(CD = map2(CD, estimateR, left_join, by="date")) %>% 
-          unnest(CD) %>% 
-          ungroup()
+          dplyr::select(-estimateR)
         
-        return(data)
+        if("Cori" %in% input$R_type) {
+          data <- data %>% 
+            mutate(estimateR.cori = map(CD, function(CD_) EstimateR.cori(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+            mutate(CD = map2(CD, estimateR.cori, left_join, by="date")) %>%
+            dplyr::select(-estimateR.cori)
+        }
         
+        if("TD" %in% input$R_type) {
+          data <- data %>% 
+            mutate(estimateR.TD = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
+            mutate(CD = map2(CD, estimateR.TD, left_join, by="date")) %>%
+            dplyr::select(-estimateR.TD)
+        }
+        
+        if("WL" %in% input$R_type) {
+          data <- data %>% 
+            mutate(estimateR.WL = map(CD, function(CD_) EstimateR.WL(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+            mutate(CD = map2(CD, estimateR.WL, left_join, by="date")) %>%
+            dplyr::select(-estimateR.WL)
+        }
+        
+        data = data %>% unnest(CD) %>% ungroup()
+        
+        data_holder$data <- data
     })
     
-    observeEvent(input$R_type,{
-
-        data = data()
+    observeEvent(input$R_type,
+      {
+        data = data_holder$data 
 
         #---------------------
         # Establish Parameters
         #----------------------
         var_tau = input$var.window_size # Window size
-        var_D = input$var.si_mean  # Mean serial interval
-        var_D_sd = input$var.si_sd # SD in serial interval
+        var_D = input$var.si_mean  # Mean generation interval
+        var_D_sd = input$var.si_sd # SD in generation interval
 
         #---------------------------------
         # Calculate R by published methods
         #---------------------------------
-
+          
         data <- data %>%
             arrange(date) %>%
             group_by(region, region_type, regionID, regionID_type) %>%
             nest(CD = -c(region, region_type, regionID, regionID_type))
-
-        if("Cori" %in% input$R_type & !any(grepl("^Cori", colnames(data)))) {
-            data <- data %>% mutate(estimateR = map(CD, function(CD_) EstimateR.cori(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
-                mutate(CD = map2(CD, estimateR, left_join, by="date"))
+      
+        
+        if(("Cori" %in% input$R_type) & !any(grepl("Cori", colnames(data$CD[[1]])))) {
+            
+            data <- data %>% 
+                mutate(estimateR.cori = map(CD, function(CD_) EstimateR.cori(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+                mutate(CD = map2(CD, estimateR.cori, left_join, by="date")) %>%
+                dplyr::select(-estimateR.cori)
         }
 
-        if("TD" %in% input$R_type & !any(grepl("^TD", colnames(data)))) {
-            data <- data %>% mutate(estimateR = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
-                mutate(CD = map2(CD, estimateR, left_join, by="date"))
+        if("TD" %in% input$R_type & !any(grepl("^TD", colnames(data$CD[[1]])))) {
+            data <- data %>% 
+                mutate(estimateR.TD = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
+                mutate(CD = map2(CD, estimateR.TD, left_join, by="date")) %>%
+                dplyr::select(-estimateR.TD)
         }
 
-        if("WL" %in% input$R_type & !any(grepl("^WL", colnames(data)))) {
-            data <- data %>% mutate(estimateR = map(CD, function(CD_) EstimateR.WL(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
-                mutate(CD = map2(CD, estimateR, left_join, by="date"))
+        if("WL" %in% input$R_type & !any(grepl("^WL", colnames(data$CD[[1]])))) {
+            data <- data %>% 
+                mutate(estimateR.WL = map(CD, function(CD_) EstimateR.WL(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+                mutate(CD = map2(CD, estimateR.WL, left_join, by="date")) %>%
+                dplyr::select(-estimateR.WL)
         }
 
         data = data %>% unnest(CD) %>% ungroup()
-
+        
+        data_holder$data <- data
     })
     
     # ------------
@@ -332,7 +425,7 @@ server <- function(input, output, clientData, session) {
     
     
     plot_R <- reactive({
-        data = data()
+        data = data_holder$data 
         
         data = data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
         
@@ -400,7 +493,7 @@ server <- function(input, output, clientData, session) {
     
     plot_TotalCases <- reactive({
         
-        data = data() %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
+        data = data_holder$data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
         
         data = data %>% split(f = data$INTERPROLATED)
         
@@ -435,7 +528,7 @@ server <- function(input, output, clientData, session) {
     
     plot_NewCases <- reactive({
         
-        data = data() %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
+        data = data_holder$data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
         
         p = ggplot(data = data) +
             geom_line(aes(x = date, y = new_cases, group = region, color = region), linetype=2) +
@@ -480,7 +573,7 @@ server <- function(input, output, clientData, session) {
     
     output$Score_Card <- renderUI({
         
-        data = data()
+        data = data_holder$data
         
         selected_regions = input$geographic_location
         if(is.null(selected_regions)){selected_regions = "World"}
@@ -556,7 +649,7 @@ server <- function(input, output, clientData, session) {
     # *************
     
     output$Plot_Info <- renderPrint({
-        data = data()
+        data = data_holder$data
         
         print("Hover mouse over plot for more info")
         print("Click-and-Drag to select a plot area.")
@@ -575,7 +668,7 @@ server <- function(input, output, clientData, session) {
     
     observeEvent(input$plot_R.hover, ignoreNULL = F, {
         
-        data = data()
+        data = data_holder$data
         hover_info = input$plot_R.hover
         
         if(!is.null(hover_info)) {
@@ -671,7 +764,7 @@ server <- function(input, output, clientData, session) {
     
     observeEvent(input$secondary_plot.hover, ignoreNULL = F, {
         
-        data = data()
+        data = data_holder$data
         hover_info = input$secondary_plot.hover
         
         if(!is.null(hover_info)) {
