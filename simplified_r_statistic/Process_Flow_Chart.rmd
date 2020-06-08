@@ -7,6 +7,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+Click on a node on the flow chart, and go to the relevant part of the code on the right
 
 ```{r echo=F, message=F, warning=F}
 library("DiagrammeR")
