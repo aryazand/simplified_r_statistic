@@ -14,11 +14,12 @@ library(RcppRoll)
 library(EpiEstim)
 library(R0)
 library(shinyjs)
+library(shinycssloaders)
 
 # ****************
 # Load Data
 # ****************
-
+source("./Estimate_R_Functions.R")
 DATA = read_csv("./case_data.csv", col_types = "ccccDddl")
 
 # ****************
@@ -107,6 +108,10 @@ coriR_node_js = "var elem = document.getElementById('cori-et-al-2013-r_t-estimat
                    document.getElementById('md_file').scrollTop = topPos;"
 
 wtR_node_js = "var elem = document.getElementById('wallinga-teunis-2004');
+                   var topPos = elem.offsetTop;
+                   document.getElementById('md_file').scrollTop = topPos;"
+
+wlR_node_js = "var elem = document.getElementById('wallinga-lipsitch-2007');
                    var topPos = elem.offsetTop;
                    document.getElementById('md_file').scrollTop = topPos;"
 
@@ -236,8 +241,8 @@ ui <- fluidPage(
         tabPanel("Code", fluid = TRUE,
                  tags$head(tags$style(HTML(".node:hover polygon {fill: red;} .node {cursor:pointer}"))),
                  useShinyjs(),
-                 column(6, uiOutput('flow_chart')),
-                 column(6, uiOutput("md_file", style = "overflow-y:scroll; max-height: 600px"))
+                 column(6, uiOutput('flow_chart') %>% withSpinner(color="#0dc5c1")),
+                 column(6, uiOutput("md_file", style = "overflow-y:scroll; max-height: 600px") %>% withSpinner(color="#0dc5c1"))
         ), 
         tabPanel("About", fluid = TRUE, includeMarkdown("About.md"))
     )
@@ -248,8 +253,6 @@ ui <- fluidPage(
 # --------------
 
 server <- function(input, output, clientData, session) {
-    
-    source("./Estimate_R_Functions.R")
   
     # ----------
     # Update Data
@@ -853,7 +856,8 @@ server <- function(input, output, clientData, session) {
     observe({shinyjs::onclick("node13", runjs(simpleR_node_js))})
     observe({shinyjs::onclick("node14", runjs(coriR_node_js))})
     observe({shinyjs::onclick("node15", runjs(wtR_node_js))})
-    observe({shinyjs::onclick("node16", runjs(estimateR_mainnode_js))})
+    observe({shinyjs::onclick("node16", runjs(wlR_node_js))})
+    observe({shinyjs::onclick("node17", runjs(estimateR_mainnode_js))})
     
     #-----------
     # Update Info
