@@ -195,6 +195,8 @@ ui <- fluidPage(
 
 server <- function(input, output, clientData, session) {
     
+    source("./Estimate_R_Functions.R")
+  
     # ----------
     # Update Data
     # ----------
@@ -202,12 +204,12 @@ server <- function(input, output, clientData, session) {
     data <- reactive({
         data <- DATA %>% 
             filter(region %in% input$geographic_location) %>%
-            mutate(region = factor(region, levels=c(input$geographic_location))) #%>%
-            #filter(!is.na(start_date))
+            mutate(region = factor(region, levels=c(input$geographic_location)))
         
         if(nrow(data) == 0) {
             data <- DATA %>% filter(region == "World")
         }
+        
         #---------------------
         # Establish Parameters
         #----------------------
@@ -235,27 +237,58 @@ server <- function(input, output, clientData, session) {
           dplyr::select(-reference_date) %>%
           ungroup()
         
+        # Calculate Simple R by default
+        
+        data <- data %>%
+          arrange(date) %>%
+          group_by(region, region_type, regionID, regionID_type) %>%
+          nest(CD = -c(region, region_type, regionID, regionID_type)) %>% 
+          mutate(estimateR = map(CD, function(CD_) EstimateR.simple(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, tau = var_tau))) %>%
+          mutate(CD = map2(CD, estimateR, left_join, by="date")) %>% 
+          unnest(CD) %>% 
+          ungroup()
+        
+        return(data)
+        
+    })
+    
+    observeEvent(input$R_type,{
+
+        data = data()
+
+        #---------------------
+        # Establish Parameters
+        #----------------------
+        var_tau = input$var.window_size # Window size
+        var_D = input$var.si_mean  # Mean serial interval
+        var_D_sd = input$var.si_sd # SD in serial interval
+
         #---------------------------------
         # Calculate R by published methods
         #---------------------------------
-        
-        source("./Estimate_R_Functions.R")
-    
+
         data <- data %>%
             arrange(date) %>%
             group_by(region, region_type, regionID, regionID_type) %>%
-            nest(CD = -c(region, region_type, regionID, regionID_type)) %>%
-            mutate(estimateR = map(CD, function(CD_) EstimateR.simple(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, tau = var_tau))) %>%
-            mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
-            mutate(estimateR = map(CD, function(CD_) EstimateR.cori(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
-            mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
-            mutate(estimateR = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
-            mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
-            mutate(estimateR = map(CD, function(CD_) EstimateR.WL(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
-            mutate(CD = map2(CD, estimateR, left_join, by="date")) %>%
-            dplyr::select(region, region_type, regionID, regionID_type, CD) %>%
-            unnest(CD) %>% 
-            ungroup()
+            nest(CD = -c(region, region_type, regionID, regionID_type))
+
+        if("Cori" %in% input$R_type & !any(grepl("^Cori", colnames(data)))) {
+            data <- data %>% mutate(estimateR = map(CD, function(CD_) EstimateR.cori(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+                mutate(CD = map2(CD, estimateR, left_join, by="date"))
+        }
+
+        if("TD" %in% input$R_type & !any(grepl("^TD", colnames(data)))) {
+            data <- data %>% mutate(estimateR = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
+                mutate(CD = map2(CD, estimateR, left_join, by="date"))
+        }
+
+        if("WL" %in% input$R_type & !any(grepl("^WL", colnames(data)))) {
+            data <- data %>% mutate(estimateR = map(CD, function(CD_) EstimateR.WL(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+                mutate(CD = map2(CD, estimateR, left_join, by="date"))
+        }
+
+        data = data %>% unnest(CD) %>% ungroup()
+
     })
     
     # ------------
@@ -302,6 +335,8 @@ server <- function(input, output, clientData, session) {
         data = data()
         
         data = data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
+        
+        data = data %>% dplyr::select(date, region, starts_with(input$R_type))
         
         # If regions are selected
         if(nrow(data) < 1) {
