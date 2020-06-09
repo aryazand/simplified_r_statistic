@@ -34,7 +34,7 @@ EstimateR.cori <- function(date, Is, si_mean, si_sd, tau) {
   )
   
   df = data.frame(
-    date = tail(date, -tau),
+    date = tail(date, -tau) - (tau/2),
     Cori.R_mean = r_estimates$R$`Mean(R)`,
     Cori.R_Quantile_025 = r_estimates$R$`Quantile.0.025(R)`,
     Cori.R_Quantile_975 = r_estimates$R$`Quantile.0.975(R)`
