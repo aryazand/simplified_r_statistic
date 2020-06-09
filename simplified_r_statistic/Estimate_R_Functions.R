@@ -1,5 +1,30 @@
 # This is a list of functions to estiamte R
 
+##-----Smoothing-Function------
+
+smooth_new_cases <- function(data, smoothing_window) {
+  
+  library("RcppRoll")
+  
+  #smoothing_window hold the user input on the size of the smoothing window
+  data = data %>%
+    group_by(region, region_type, regionID, regionID_type) %>%
+    mutate(new_cases_smoothed = roll_mean(new_cases, n = smoothing_window, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
+    mutate(new_cases_smoothed = replace(new_cases_smoothed, is.na(new_cases_smoothed), new_cases[is.na(new_cases_smoothed)])) %>%
+    ungroup()
+  
+  # replace NAs in new_cases_smoothed with value from new_cases
+  data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
+  
+  # Remove smoothed new cases that result in NAs or leading 0s
+  data = data %>% filter(!is.na(new_cases_smoothed)) %>% 
+    mutate(reference_date = date[min(which((new_cases_smoothed > 0)))] - 1) %>%
+    filter(date >= reference_date) %>%
+    dplyr::select(-reference_date)
+  
+  return(data)
+}
+
 ## ---- Simple-R-Estimate ----
 
 EstimateR.simple <- function(date, Is, si_mean, tau) {

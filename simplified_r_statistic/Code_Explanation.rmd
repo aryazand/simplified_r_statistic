@@ -7,6 +7,11 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r include=F}
+knitr::read_chunk("Estimate_R_Functions.R")
+source("Estimate_R_Functions.R")
+```
+
 ## Download Data
 
 ```{r download_data, message=F, warning=F}
@@ -231,37 +236,17 @@ data <-DATA %>% filter(region %in% geographic_location)
 
 We use an unweighted rolling mean to smooth the number of new cases per day. The the window size for the rolling mean can be user  controlled in the web app. Here we will use a smoothing window size of `r smoothing_window` days. 
 
-```{r message=F, warning=F}
-library(RcppRoll)
+```{r Smoothing-Function}
+```
 
-#smoothing_window hold the user input on the size of the smoothing window
-data = data %>%
-    group_by(region, region_type, regionID, regionID_type) %>%
-    mutate(new_cases_smoothed = roll_mean(new_cases, n = smoothing_window, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
-    mutate(new_cases_smoothed = replace(new_cases_smoothed, is.na(new_cases_smoothed), new_cases[is.na(new_cases_smoothed)])) %>%
-    ungroup()
-
-
-# replace NAs in new_cases_smoothed with value from new_cases
-data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
-
-# Remove smoothed new cases that result in NAs or leading 0s
-data = data %>% filter(!is.na(new_cases_smoothed)) %>% 
-  mutate(reference_date = date[min(which((new_cases_smoothed > 0)))]) %>%
-  filter(date >= reference_date) %>%
-  dplyr::select(-reference_date)
-
-#DT::datatable(data)
+```{r}
+data = smooth_new_cases(data, smoothing_window)
 ```
 
 <div id="estimate_r0">
 ## Estimate $R_t$
 
 All the method here use a the serial interval (as a proxy of the generation interval) to estimate $R_t$. For the webapp we assume that the serial interval has a parametric distribution and the user can control the mean and standard deviation of the distribution (the exact type of distribution is depends on the method used estimate $R_t$). Here, we'll assume the mean is `r var.si_mean` and standard deviation of `r var.si_sd` (as measured for SARS-CoV-2 by Nishiura et al, 2020).
-```{r include=F}
-knitr::read_chunk("Estimate_R_Functions.R")
-source("Estimate_R_Functions.R")
-```
 
 ### Simple R calcuation
 

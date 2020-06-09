@@ -29,33 +29,17 @@ DATA = read_csv("./case_data.csv", col_types = "ccccDddl")
 data <- DATA %>% filter(region == "World")
 
 #---------------------
-# Establish Parameters
-#----------------------
-var_tau = 7
-var_D = 4
-var_D_sd = 3
-
-#---------------------
 # Smooth Data
 #----------------------
 
-data = data %>%
-  group_by(region, region_type, regionID, regionID_type) %>%
-  mutate(new_cases_smoothed = roll_mean(new_cases, n = 7, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
-  mutate(new_cases_smoothed = replace(new_cases_smoothed, is.na(new_cases_smoothed), new_cases[is.na(new_cases_smoothed)])) %>%
-  ungroup()
+data = smooth_new_cases(data, smoothing_window = 7)
 
-data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
-
-data = data %>% 
-  filter(!is.na(new_cases_smoothed)) %>%
-  group_by(region, region_type, regionID, regionID_type) %>%
-  mutate(reference_date = date[min(which((new_cases_smoothed > 0)))]) %>%
-  filter(date >= reference_date) %>%
-  dplyr::select(-reference_date) %>%
-  ungroup()
-
+#-------------------------------
 # Calculate Simple R by default
+#-------------------------------
+
+var_tau = 7
+var_D = 4
 
 data <- data %>%
   arrange(date) %>%
@@ -286,22 +270,11 @@ server <- function(input, output, clientData, session) {
         #---------------------
         # Smooth Data
         #----------------------
-        
-        data = data %>%
-            group_by(region, region_type, regionID, regionID_type) %>%
-            mutate(new_cases_smoothed = roll_mean(new_cases, n = input$smoothing_window, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
-            mutate(new_cases_smoothed = replace(new_cases_smoothed, is.na(new_cases_smoothed), new_cases[is.na(new_cases_smoothed)])) %>%
-            ungroup()
-        
-        data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
-        
-        data = data %>% 
-          filter(!is.na(new_cases_smoothed)) %>%
-          group_by(region, region_type, regionID, regionID_type) %>%
-          mutate(reference_date = date[min(which((new_cases_smoothed > 0)))]) %>%
-          filter(date >= reference_date) %>%
-          dplyr::select(-reference_date) %>%
-          ungroup()
+        data = smooth_new_cases(data, smoothing_window = input$smoothing_window)
+
+        #---------------------
+        # Estimate R
+        #----------------------
         
         # Calculate Simple R by default
         
@@ -351,7 +324,7 @@ server <- function(input, output, clientData, session) {
         var_D_sd = input$var.si_sd # SD in generation interval
 
         #---------------------------------
-        # Calculate R by published methods
+        # Estimate R by published methods
         #---------------------------------
           
         data <- data %>%
