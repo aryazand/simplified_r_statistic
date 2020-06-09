@@ -276,7 +276,7 @@ We do this in R with the following code:
 ```{r Simple-R-Estimate}
 ```
 
-```{r echo=F, warning=F, message=F}
+```{r warning=F, message=F}
 
 simpleR.df = EstimateR.simple(date = data$date, Is = data$new_cases_smoothed, si_mean = var.si_mean, tau = var.tau)
 
@@ -308,7 +308,7 @@ Where $w_s$ is a probability distribution of how infectious individuals are at t
 ```{r Cori-R-Estimate}
 ```
 
-```{r echo=F, warning=F, message=F}
+```{r warning=F, message=F}
 coriR.df = EstimateR.cori(date = data$date, Is = data$new_cases_smoothed, si_mean = var.si_mean, si_sd = var.si_sd, tau = var.tau)
 
 df = left_join(data, coriR.df, by="date")
@@ -325,10 +325,19 @@ ggplot(df) +
 
 ### Wallinga & Teunis (2004)
 
+This method is based on the idea that $R_t$ can be estimated from a network of pairs of cases. The likelihood that case $j$ infected case $i$ is $w(t_i - t_j)$ where $w(t)$ is the distribution of generation interval (i.e. the relative probability a case will transmit the infection $t$ units of time after the start of the infection) and $t_i$ and $t_j$ are the times at which cases $i$ and $j$ were infected, respectively. The relative likelihood that case $j$ infected case $i$ is $w(t_i - t_j)$ normalized to the probability of that any other case $k$ infected $i$: 
+
+$$ p_{i,j} = \frac{w(t_i - t_j)}{\sum_{i \neq k}{w(t_i - t_k)}}$$
+Thus, the effective reproduction value for case $j$ ($R_j$) is the sum of $p_{i,j}$ for all pairs $i$ and $j$. Then the effective reproduction value ($R_t$) is the mean of all $R_j$ at a given time. 
+
+$$R_j = \sum_{i} \frac{w(t_i - t_j)}{\sum_{i \neq k}{w(t_i - t_k)}}$$
+
+Wallinga & Teunis (2004) describes using a maximum-likelihood estimation to determine which infections network (and thus pairs of $i$ and $j$) has the highest likelihood of producing the observed epidemic curve. Details can be found in their [publication](https://academic.oup.com/aje/article/160/6/509/79472). We use the R0 package to estimate $R_t$ and a confidence interval for webapp, as follows: 
+
 ```{r WT-R-Estimate}
 ```
 
-```{r echo=F, message=F, warning=F}
+```{r message=F, warning=F}
 WT.df = EstimateR.WT(date = data$date, Is = data$new_cases_smoothed, si_mean = var.si_mean, si_sd = var.si_sd)
 
 df = left_join(data, WT.df, by="date")
@@ -346,10 +355,19 @@ ggplot(df) +
 
 ### Wallinga & Lipsitch (2007)
 
+The Walling & Lipsitch (2007) describe determing $R_t$ in two steps: 
+
+1) Determine the exponential growth rate ($r$). Here we determine $r$ at each unit of time ($t$) by using `glm` function to fit a value of $r$ on a time window (size $\tau$) centered on $t$. We assume infections within that time window are produced by a poisson function. 
+
+2) You can calculate $R_t$ from $r$ by "plugging" $r$ into moment-generating function of the generation interval $w(t)$
+
+$$ R_t = \frac{1}{\int_{t = 0}^{\infty} e^{-rt}w(t)dt}$$
+This formula is implemented in the R0 package with the `R.from.r()` function. We produce confidence intervals of $R_t$ from the confidence intervals of $r$ produced by the glm function.
+
 ```{r WL-R-Estimate}
 ```
 
-```{r echo=F, message=F, warning=F}
+```{r message=F, warning=F}
 WL.df = EstimateR.WL(date = data$date, Is = data$new_cases_smoothed, si_mean = var.si_mean, si_sd = var.si_sd, tau=7)
 
 df = left_join(data, WL.df, by="date")
