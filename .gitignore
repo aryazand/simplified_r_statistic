@@ -6,7 +6,7 @@
 simplified_r_statistic/rsconnect/*
 presentations/**/*.pdf
 presentations/**/*.html
-presentation/Results/*.csv
+presentations/**/*.csv
 simplified_r_statistic/case_data.csv
 simplified_r_statistic/*.html
 scratch/*
