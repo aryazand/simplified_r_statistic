@@ -87,7 +87,7 @@ R_estimations <- function(data, var_D, var_D_sd, var_tau, smoothing_window) {
 #------------------------------
 
 df = R_estimations(data, var_D = 4, var_D_sd = 3, var_tau = 7, smoothing_window = 7)
-write_csv(df, "Fig2&3_data.csv")
+write_csv(df, "../presentations/Results/Fig2&3_data.csv")
 
 
 #-------------------------
@@ -109,7 +109,7 @@ df = df %>% pivot_longer(cols = c("Median", "95th_percentile"), names_to = "erro
 df$error_type =  df$error_type %>% fct_recode(`Median Error` = "Median", 
                                               `95th Percentile of Error` = "95th_percentile")
 
-write_csv(df, "Fig4_data.csv")
+write_csv(df, "../presentations/Results/Fig4_data.csv")
 
 
 #-------------------------
@@ -128,7 +128,7 @@ df$tau = as.numeric(df$tau)
 df = df %>% pivot_longer(cols = c("Median", "95th_percentile"), names_to = "error_type", values_to = "error")
 df$error_type =  df$error_type %>% fct_recode(`Median Error` = "Median", 
                                                             `95th Percentile of Error` = "95th_percentile")
-write_csv(df, "Fig5_data.csv")
+write_csv(df, "../presentations/Results/Fig5_data.csv")
 
 #-------------------------
 # Calculate for Figure 6
@@ -146,4 +146,4 @@ df <- df %>% separate(col=GT, c("mean", "SD"))
 df <- df %>% mutate(mean = as.numeric(mean),
                                   SD = as.numeric(SD))
 
-write_csv(df, "Fig6_data.csv")
+write_csv(df, "../presentations/Results/Fig6_data.csv")
