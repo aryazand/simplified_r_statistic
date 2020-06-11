@@ -3,12 +3,23 @@ title: "Comparing Simplified estimation of R to EpiEstim estimation of R"
 author: "Arya Zandvakili"
 date: "5/7/2020"
 output:
-  pdf_document: default
   html_document: default
+    fig_caption: yes
+  pdf_document: default
+    fig_caption: yes
 urlcolor: blue
 ---
 
-EpiEstim is an R package ("R" referring to the coding package, that has nothing to do with the reproduction number) for estimating the effective reproduction number that was developed by Cori et al, 2013 (<https://academic.oup.com/aje/article/178/9/1505/89262>). My understanding (from reading the primary article and its supplement) is that they use a Bayesian approach and estimate R as gamma-distributed:
+## Introduction 
+
+EpiEstim is an R^[1] package  for estimating the effective reproduction number that was developed by [Cori et al, 2013](https://academic.oup.com/aje/article/178/9/1505/89262). In this document we compare the two approaches. 
+
+--- 
+1. "R" referring to the coding package, it is a coincidence that it has the same name as the reproduction number]
+
+## Section 1: An Analytical Comparison
+
+They use a Bayesian approach to estimate R. They estimate R as gamma-distributed:
 
 $$ R_t \sim \Gamma(a + \sum_{s=t-\tau+1}^{t} I_s, \frac{1}{\frac{1}{b} + \sum_{s=t-\tau+1}^{t} I_sw_s})$$
 
@@ -23,3 +34,160 @@ $$ R_t^s = \frac{\sum_{s=t-\tau+1}^{t} I_s}{\sum_{s=t-\tau+1-D}^{t-D} I_s} $$
 where $D$ is the estimated serial interval (or generation interval). 
 
 Therefore, it seems to me that $R_t^S$ approximates $R_t$ so long as $\sum I_s >> a$ and the majority of the mass of the $w_s$ is at $D$. This is consistent with what we see in the web-app: $R_t^S$ and $R_t$ converge as the number of new cases per day increases, and in the EpiEstim controls we set the mean serial interval to equal D and we keep the standard deviation of the serial interval low. 
+
+## Section 2: A Statistical Comparison 
+
+Here we will compare the two approaches to estimating R based on the available data for the US states: 
+
+#### 2.1 Load the data and calculate new cases per day. 
+
+```{r message=F, warning=F}
+library('tidyverse')
+
+# *****************
+# Download coronavirus case data for US States from NYT
+# *****************
+
+data <- read_csv("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv", col_types = "Dccnn")
+
+# *****************
+# Calculate new cases per day for each state
+# *****************
+# New_Cases_(i) = Total_Cases_(i) - Total_Cases_(i-1)
+#     Where (i) is the day
+# Total_Cases_(i) = Active_Cases_(i) - Deaths_(i)
+#     The issue with this that 
+
+data <- data %>%
+    # remove unncessary column
+    select(-fips) %>% 
+    # calculate total cases
+    mutate(total_cases = cases + deaths) %>%
+    # group data by state and arrange by date
+    group_by(state) %>% arrange(date) %>%
+    # calculate new cases per day
+    mutate(new_cases = total_cases - c(0, total_cases[-length(total_cases)])) %>%
+    # ungroup
+    ungroup()
+
+# *****************
+# Output
+# *****************
+
+DT::datatable(data)
+```
+
+#### 2.2 Estimate R via both methods
+```{r message=F, warning=F}
+
+var_tau = 7 # Window size
+var_D = 4  # Mean serial interval 
+var_D_sd = 1 # SD in serial interval
+
+# *****************
+# Estimate R using simplified method
+# *****************
+
+data <- data %>%
+  group_by(state) %>%
+  arrange(date) %>%
+  mutate(new_cases.weekly_sum = roll_sum(new_cases, n=var_tau, align="right", fill = c(NA, NA, NA))) %>%
+  mutate(denominator = head(c(rep(NA, var_D), new_cases.weekly_sum), var_D*-1)) %>%
+  ungroup() %>%
+  mutate(denominator = replace(denominator, which(denominator == 0), NA)) %>%
+  mutate(Rs = new_cases.weekly_sum/denominator)
+
+# *****************
+# Estimate R using EpiEstim method
+# *****************
+
+library("EpiEstim")
+estimate_R.safely = purrr::safely(estimate_R)
+
+
+data = data %>%
+  arrange(date) %>%
+  group_by(state) %>%
+  nest(CD = -state) %>%
+  mutate(EpiEstim = map(CD, function(CD_)
+      estimate_R.safely(CD_$new_cases, 
+             method = "parametric_si", 
+             config = make_config(list(mean_si = var_D, 
+                                       std_si = var_D_sd,
+                                       t_start = seq(2, nrow(CD_) - var_tau + 1),
+                                       t_end = seq(var_tau+1, nrow(CD_))))))) %>%
+  mutate(EpiEstim = map(EpiEstim, function(i) i$result$R)) %>%
+  filter(!is.null(EpiEstim[[1]])) %>%
+  mutate(CD = map(CD, function(CD_) tail(CD_, var_tau*-1))) %>%
+  mutate(results = map2(CD, EpiEstim, cbind)) %>%
+  select(state, results) %>%
+  unnest(results)
+
+# *****************
+# Calculate Difference in R
+# *****************
+
+data <- data %>%
+  mutate(Std_Error = (`Mean(R)` - Rs)/`Mean(R)`) %>%
+  mutate(RMSE = sqrt((`Mean(R)` - Rs)^2))
+
+# *****************
+# Show data
+# *****************
+
+DT::datatable(data)
+
+```
+
+#### 2.3 Results
+
+```{r continuous_error message=F, warning=F, echo=F, fig.cap="\label{fig:figs} Error in R estimates. (A) Comparing absolute values of R estimations by Simplified method and EpiEstim method. Dotted line is y=x. (B) Histogram of difference between EpiEstim R and Simplified R estimations. (C) Histogram of Root-Mean-Square-Error as a percent of the EpiEstim R calculation. (D) Root-Mean-Square-Error as a percent of the EpiEstim R calculation over each day of the epidemic. Each line represents one US State."}
+
+library("ggpubr")
+
+p1.a = data %>%
+  ggplot(aes(`Mean(R)`, Rs)) + 
+  geom_point(alpha=0.2) + 
+  geom_abline(slope = 1, intercept = 0, linetype = 2) + 
+  labs(x="EpiEstim R", y="Simplified R") +
+  theme_pubr() +
+  scale_x_log10() + scale_y_log10()
+
+p1.b = data %>%
+  mutate(Std_Error = map_dbl(Std_Error, function(i) ifelse(i > 2, 2, i))) %>%
+  mutate(Std_Error = map_dbl(Std_Error, function(i) ifelse(i < -2, -2, i))) %>%
+  ggplot() + 
+  geom_histogram(aes(Std_Error), fill="white", color="black") + 
+  geom_vline(xintercept = 0, linetype=2) + 
+  labs(x = "R - Rs") + 
+  theme_pubr() + 
+  annotate(geom = "text", x=-1, y=1500, label = paste("Median Error =", round(median(data$Std_Error, na.rm=T),3))) + 
+  annotate(geom = "text", x=-1, y=1000, label = paste("Mean Error =", round(mean(data$Std_Error, na.rm=T),3)))
+
+p2.a = data %>%
+  ggplot() + 
+  geom_histogram(aes(100*RMSE/`Mean(R)`), fill="white", color="black") + 
+  scale_x_log10(labels = scales::comma) +
+  labs(x = "Root-Mean-Square-Error(%)") +
+  theme_pubr() +
+  annotate(geom = "text", x=0.1, y=700, label = paste("Median RMSE =", round(median(data$RMSE, na.rm=T),3))) + 
+  annotate(geom = "text", x=0.1, y=600, label = paste("Mean RMSE =", round(mean(data$RMSE, na.rm=T),3)))
+  
+p2.b = data %>%
+  group_by(t_end) + 
+  summarise(RMSE.mean = mean(100*RMSE/`Mean(R)`)) + 
+  ggplot() + 
+  geom_line(data=data, aes(x = t_end, y = 100*RMSE/`Mean(R)`, group=state), alpha=0.25) +
+  geom_line(aes(x = t_end, y = 100*RMSE/`Mean(R)`, group=state), alpha=0.25) +
+  labs(x = "days since first case", y = "Root-mean-square-error (%)") + 
+  scale_y_log10(labels = scales::comma) + 
+  theme_pubr() + 
+  theme(legend.position = "none")
+
+
+ggarrange(p1.a, p1.b, p2.a, p2.b, 
+          labels = c("A", "B", "C", "D"),
+          ncol = 2, nrow = 2)
+```
+
+In the figure above we can see that the simplified R estimation levels off to be about 1% 
