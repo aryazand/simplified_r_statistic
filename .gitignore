@@ -3,10 +3,10 @@
 .RData
 .Ruserdata
 
-
 simplified_r_statistic/rsconnect/*
-presentation/*.pdf
-presentation/*.html
+presentations/**/*.pdf
+presentations/**/*.html
+presentation/Results/*.csv
 simplified_r_statistic/case_data.csv
 simplified_r_statistic/*.html
 scratch/*
