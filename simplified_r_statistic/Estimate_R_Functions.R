@@ -18,9 +18,11 @@ smooth_new_cases <- function(data, smoothing_window) {
   
   # Remove smoothed new cases that result in NAs or leading 0s
   data = data %>% filter(!is.na(new_cases_smoothed)) %>% 
-    mutate(reference_date = date[min(which((new_cases_smoothed > 0)))] - 1) %>%
+    group_by(region, region_type, regionID, regionID_type) %>%
+    mutate(reference_date = date[min(which((new_cases_smoothed > 0)))]) %>%
     filter(date >= reference_date) %>%
-    dplyr::select(-reference_date)
+    dplyr::select(-reference_date) %>%
+    ungroup()
   
   return(data)
 }
@@ -28,7 +30,7 @@ smooth_new_cases <- function(data, smoothing_window) {
 ## ---- Simple-R-Estimate ----
 
 EstimateR.simple <- function(date, Is, si_mean, tau) {
-  # This function takes a
+  
   df = data.frame(date, Is)
     
   df = df %>%
