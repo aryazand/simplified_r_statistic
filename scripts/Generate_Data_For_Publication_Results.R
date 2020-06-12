@@ -1,12 +1,37 @@
 library("tidyverse")
 library("RcppRoll")
-source("../simplified_r_statistic/Estimate_R_Functions.R")
+source("./simplified_r_statistic/Estimate_R_Functions.R")
 
+# Process Arguments
+args = commandArgs(trailingOnly=TRUE)
+SMOOTHING_FLAG_POSITION = which(args == "-smooth")
+MEAN_FLAG_POSITION = which(args == "-mean")
+SD_FLAG_POSITION = which(args == "-sd")
+TAU_FLAG_POSITION = which(args == "-tau")
+OUTPUT_FLAG_POSITION = which(args == "-o")
+
+print(args[SMOOTHING_FLAG_POSITION + 1])
+smoothing_window = eval(parse(text = args[SMOOTHING_FLAG_POSITION + 1]))
+print(args[MEAN_FLAG_POSITION + 1])
+GT_mean = eval(parse(text = args[MEAN_FLAG_POSITION + 1]))
+print(args[SD_FLAG_POSITION + 1])
+GT_SD = eval(parse(text = args[SD_FLAG_POSITION + 1]))
+print(args[TAU_FLAG_POSITION + 1])
+tau = eval(parse(text = args[TAU_FLAG_POSITION + 1]))
+print(args[OUTPUT_FLAG_POSITION + 1])
+OUTPUTFILE = args[OUTPUT_FLAG_POSITION + 1]
+
+parameter_list = list(smoothing_window = smoothing_window, 
+                      GT_mean = GT_mean, 
+                      GT_SD = GT_SD, 
+                      tau = tau)
+print(parameter_list)
+parameter_combos = cross(parameter_list)
 #-----------
 # Load Data
 #------------
 
-data = read_csv("../simplified_r_statistic/case_data.csv")
+data = read_csv("./simplified_r_statistic/case_data.csv")
 set.seed(19890616)
 data = data %>% filter(region_type == "state") %>% filter(region %in% sample(unique(.$region), 10))
 data = data %>% group_by(region, region_type, regionID, regionID_type) %>% filter(n() > 15) %>% ungroup()
@@ -83,67 +108,18 @@ R_estimations <- function(data, var_D, var_D_sd, var_tau, smoothing_window) {
 }
 
 #------------------------------
-# Calculate for Figure 2 and 3
+# Apply Function with Parameters
 #------------------------------
 
-df = R_estimations(data, var_D = 4, var_D_sd = 3, var_tau = 7, smoothing_window = 7)
-write_csv(df, "../presentations/Results/Fig2&3_data.csv")
+df = map(parameter_combos, function(i) R_estimations(data, var_D = i$GT_mean, var_D_sd = i$GT_SD, var_tau = i$tau, smoothing_window = i$smoothing_window))
 
+names(df) = map_chr(parameter_combos, paste, collapse=",")
+df = bind_rows(df, .id = "parameters")
+df = df %>% separate(col = parameters, into = c("smoothing_window", "GT_mean", "GT_SD", "tau"))
+df = df %>% mutate(smoothing_window = as.numeric(smoothing_window), 
+                   GT_mean = as.numeric(GT_mean),
+                   GT_SD = as.numeric(GT_SD), 
+                   tau = as.numeric(tau))
 
-#-------------------------
-# Calculate for Figure 4
-#-------------------------
-
-smoothing_window.seq = 1:10
-df = map(smoothing_window.seq, function(i) R_estimations(data, var_D = 4, var_D_sd = 3, var_tau = 7, smoothing_window = i))
-names(df) <- smoothing_window.seq
-
-df <- bind_rows(df, .id = "smoothing_window")
-df <- df %>% group_by(smoothing_window, Comparison) %>% 
-  summarise(Median = median(RMSE, na.rm=T),
-            `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
-
-df$smoothing_window = as.numeric(df$smoothing_window)
-
-df = df %>% pivot_longer(cols = c("Median", "95th_percentile"), names_to = "error_type", values_to = "error")
-df$error_type =  df$error_type %>% fct_recode(`Median Error` = "Median", 
-                                              `95th Percentile of Error` = "95th_percentile")
-
-write_csv(df, "../presentations/Results/Fig4_data.csv")
-
-
-#-------------------------
-# Calculate for Figure 5
-#-------------------------
-
-tau.seq = 1:10
-df = map(tau.seq, function(i) R_estimations(data, var_D = 4, var_D_sd = 3, var_tau = i, smoothing_window = 7))
-names(df) <- tau.seq
-
-df <- bind_rows(df, .id = "tau")
-df <- df %>% group_by(tau, Comparison) %>% summarise(Median = median(RMSE, na.rm=T),
-                                                                   `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
-df$tau = as.numeric(df$tau)
-
-df = df %>% pivot_longer(cols = c("Median", "95th_percentile"), names_to = "error_type", values_to = "error")
-df$error_type =  df$error_type %>% fct_recode(`Median Error` = "Median", 
-                                                            `95th Percentile of Error` = "95th_percentile")
-write_csv(df, "../presentations/Results/Fig5_data.csv")
-
-#-------------------------
-# Calculate for Figure 6
-#-------------------------
-
-mean_sd.seq = cross2(c(2,4,6,8,10), c(2,4,6,8,10))
-df = map(mean_sd.seq, function(i) R_estimations(data, var_D = i[[1]], var_D_sd = i[[2]], var_tau = 7, smoothing_window = 7))
-
-names(df) <- mean_sd.seq %>% map(., unlist) %>% map(., function(i) paste(i, collapse=",")) %>% unlist()
-
-df <- bind_rows(df, .id = "GT")
-df <- df %>% group_by(GT, Comparison) %>% summarise(Median = median(`Absolute Error`, na.rm=T),
-                                                                  `95th_percentile` = quantile(`Absolute Error`, 0.95, na.rm=T))
-df <- df %>% separate(col=GT, c("mean", "SD"))
-df <- df %>% mutate(mean = as.numeric(mean),
-                                  SD = as.numeric(SD))
-
-write_csv(df, "../presentations/Results/Fig6_data.csv")
+# Save file
+write_csv(df, OUTPUTFILE)

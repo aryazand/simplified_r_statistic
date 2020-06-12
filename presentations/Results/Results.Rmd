@@ -1,12 +1,10 @@
 ---
 title: "Results"
-output:
-  pdf_document:
-  html_document: default
 header-includes:
 - \usepackage{caption}
 - \captionsetup[figure]{labelformat=empty}
 ---
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -40,17 +38,6 @@ library("RcppRoll")
 > 2. The number of days for assessing the time-period <br>
 > 3. When the mean and standard deviation of generation interval are low <br>
 
-```{r echo=F, message=F, warning=F}
-df= read_csv("Fig2&3_data.csv")
-
-data_RMSE_stats <- data_RMSE %>%
-  filter(!is.infinite(RMSE)) %>%
-  group_by(Comparison) %>%
-  summarise(Mean = mean(RMSE, na.rm=T), 
-            Median = median(RMSE, na.rm=T),
-            `95_quantile` = quantile(RMSE, 0.95, na.rm=T))
-```
-
 When using the web-app, visual inspection shows that there is a great deal of agreement between the different methods of estimating $R_t$ (Figure 1 - add in a screenshot). We can quantify the difference in $R_t$ estimations using the absolute error. Here, we compared the $R_t$ values for each day of pandemic for 10 US States using the default parameter ^[smoothing window of 7 days, generation interval with mean of 4 day and standard deviation of 3 days, and time window for $R_t$ calculation of 7 days.], and we find very similar estimates of $R_t$ between the 4 methods - the 95th percentile of absolute error remains less that 0.7 (Figure 2). 
 
 In particular, we find that as the incidents increase with the time period used to calculate $R_t$ (default 7 days), the difference in $R_t$ estimations between the different methods decreases (Figure 3). Similarly, the disagreement between the methods decreases if the size of the smoothing window is increased (Figure 4) or if the number of days used to calculate $R_t$ is increased (Figure 5). 
@@ -59,8 +46,17 @@ An important parameters when caculating $R_t$ is the distribution of the generat
 
 ```{r echo=F, message = F, warning = F, fig.cap="Figure 2. Distribution of absolute error between all pairs of methods for estimating R", fig.width=12}
 
+df= read_csv("DATA - baseline_parameters.csv")
+
+data_RMSE_stats <- df %>%
+  filter(!is.infinite(RMSE)) %>%
+  group_by(Comparison) %>%
+  summarise(Mean = mean(RMSE, na.rm=T), 
+            Median = median(RMSE, na.rm=T),
+            `95_quantile` = quantile(RMSE, 0.95, na.rm=T))
+
 library("ggpubr")
-ggplot(data_RMSE) + 
+ggplot(df) + 
   geom_histogram(aes(RMSE), fill="white", color="black") +
   geom_vline(data = data_RMSE_stats, aes(xintercept = Median), linetype = 2) +
   geom_text(data = data_RMSE_stats, aes(x = Median*0.5, y = 150, 
@@ -84,19 +80,7 @@ df <- df %>%
   arrange(date) %>%
   mutate(weekly_sum = roll_sum(new_cases, n=7, align="right", fill = c(NA, NA, NA)))
 
-data_RMSE <- df %>% 
-  pivot_longer(cols = starts_with("RMSE"), names_to = "Comparison", values_to = "RMSE") %>%
-  mutate(Comparison = factor(Comparison, levels = c("RMSE.KN_Cori", "RMSE.KN_WT", "RMSE.KN_WL", 
-                                                    "RMSE.Cori_WT", "RMSE.Cori_WL", "RMSE.WT_WL")))
-
-data_RMSE$Comparison <- data_RMSE$Comparison %>% fct_recode(`Cori vs Wallinga & Lipsitch` = "RMSE.Cori_WL",
-                                                            `Cori vs Wallinga & Teunis` = "RMSE.Cori_WT",
-                                                            `Simple Ratio vs Cori` = "RMSE.KN_Cori",
-                                                            `Simple Ratio vs Wallinga & Lipsitch` = "RMSE.KN_WL",
-                                                            `Simple Ratio vs Wallinga & Tuenis` = "RMSE.KN_WT",
-                                                            `Walinga & Teunis vs Wallinga & Lipsitch` = "RMSE.WT_WL")
-
-data_RMSE %>% filter(RMSE < 100) %>%
+df %>% filter(RMSE < 100) %>%
 ggplot() +  
   geom_point(aes(new_cases_smoothed, RMSE), alpha=0.2) +
   facet_wrap(~Comparison, scales="free") +
@@ -107,7 +91,18 @@ ggplot() +
 
 ```{r echo=F, message = F, warning = F, fig.cap = "Figure 4. The absolute error decreases as the number days used to smooth new cases per day increases.", fig.width=12}
 
-df = read_csv("Fig4_data.csv")
+df = read_csv("DATA - vary_smoothing_parameter.csv")
+
+df <- df %>% group_by(smoothing_window, Comparison) %>%
+  summarise(Median = median(RMSE, na.rm=T),
+            `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
+
+df$smoothing_window = as.numeric(df$smoothing_window)
+
+df = df %>% pivot_longer(cols = c("Median", "95th_percentile"), names_to = "error_type", values_to = "error")
+df$error_type =  df$error_type %>% fct_recode(`Median Error` = "Median",
+                                              `95th Percentile of Error` = "95th_percentile")
+
 ggplot(df) +
   geom_line(aes(smoothing_window, error, color=Comparison)) +
   facet_wrap(~error_type, scales="free") + 
@@ -116,7 +111,15 @@ ggplot(df) +
 
 ```{r echo=F, message = F, warning = F, fig.cap = "Figure 5. The absolute error decreases as the number days used to calculate $R_t$ is increased", fig.width=12}
 
-df = read_csv("Fig5_data.csv")
+df = read_csv("DATA - vary_tau_parameter.csv")
+
+df <- df %>% group_by(tau, Comparison) %>% summarise(Median = median(RMSE, na.rm=T),
+                                                     `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
+
+df = df %>% pivot_longer(cols = c("Median", "95th_percentile"), names_to = "error_type", values_to = "error")
+df$error_type =  df$error_type %>% fct_recode(`Median Error` = "Median",
+                                              `95th Percentile of Error` = "95th_percentile")
+
 ggplot(df) +
   geom_line(aes(tau, error, color=Comparison)) +
   facet_wrap(~error_type, scales="free") + 
@@ -125,19 +128,23 @@ ggplot(df) +
 
 ```{r echo=F, message = F, warning = F, fig.cap = "Figure 6. The absolute error tends to increase as the mean and standard deviation of the generation interval are increased. (A) Median Absolute Error. (B) 95th Percentile in Absolute Error.", fig.width=12}
 
-df = read_csv("Fig6_data.csv")
+df = read_csv("DATA - vary_GT_parameter.csv")
+
+df <- df %>% group_by(GT_mean, GT_SD, Comparison) %>% summarise(Median = median(RMSE, na.rm=T),
+                                                    `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
 
 a = ggplot(df) +
-  geom_raster(aes(x=mean, y=SD, fill=Median)) +
+  geom_raster(aes(x=GT_mean, y=GT_SD, fill=Median)) +
+  labs(x = "Mean", y="SD") +
   facet_wrap(~Comparison) + 
   scale_x_continuous(breaks = c(2,4,6,8,10)) + 
   scale_y_continuous(breaks = c(2,4,6,8,10)) + 
   scale_fill_continuous(type = "viridis") +
   theme_pubr()
 
-
 b = ggplot(df) +
-  geom_raster(aes(x=mean, y=SD, fill=`95th_percentile`)) +
+  geom_raster(aes(x=GT_mean, y=GT_SD, fill=`95th_percentile`)) +
+  labs(x = "Mean", y="SD") +
   facet_wrap(~Comparison) + 
   scale_x_continuous(breaks = c(2,4,6,8,10)) + 
   scale_y_continuous(breaks = c(2,4,6,8,10)) + 
