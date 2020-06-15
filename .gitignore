@@ -8,6 +8,7 @@ presentations/**/*.pdf
 presentations/**/*.html
 presentations/**/*.csv
 presentations/**/*.tex
+presentations/Results/Figure_1.png
 simplified_r_statistic/case_data.csv
 simplified_r_statistic/*.html
 scratch/*
