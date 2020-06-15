@@ -63,15 +63,21 @@ library("RcppRoll")
 > 2. The number of days for assessing the time-period <br>
 > 3. When the mean and standard deviation of generation interval are low <br>
 
-When using the web-app, visual inspection shows that there is a great deal of agreement between the different methods of estimating $R_t$ (Figure 1 - add in a screenshot). We can quantify the difference in $R_t$ estimations using the absolute error. Here, we compared the $R_t$ values for each day of pandemic for 10 US States using the default parameter ^[smoothing window of 7 days, generation interval with mean of 4 day and standard deviation of 3 days, and time window for $R_t$ calculation of 7 days.], and we find very similar estimates of $R_t$ between the 4 methods - the 95th percentile of absolute error remains less that 0.7 (Figure 2). 
+
+```{r echo=F, message = F, warning = F}
+
+df= read_csv("DATA - baseline_parameters.csv")
+
+df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
+```
+
+When using the web-app, visual inspection shows that there is a great deal of agreement between the different methods of estimating $R_t$ (Figure 1 - add in a screenshot). We can quantify the difference in $R_t$ estimations using the absolute error. Here, we compared the $R_t$ values for each day of pandemic for 10 US States using the default parameter ^[smoothing window of 7 days, generation interval with mean of 4 day and standard deviation of 3 days, and time window for $R_t$ calculation of 7 days.], and we find very similar estimates of $R_t$ between the 4 methods - with the median error between any two estimates being `r round(median(df$RMSE, na.rm=T),3)` (Figure 2). 
 
 In particular, we find that as the incidents increase with the time period used to calculate $R_t$ (default 7 days), the difference in $R_t$ estimations between the different methods decreases (Figure 3). Similarly, the disagreement between the methods decreases if the size of the smoothing window is increased (Figure 4) or if the number of days used to calculate $R_t$ is increased (Figure 5). 
 
 An important parameters when caculating $R_t$ is the distribution of the generation interval. We find as the mean or standard deviation in the generation interval increased, there is also increased disagreement in $R_t$ estimations between the four methods (Figure 6).
 
 ```{r echo=F, message = F, warning = F, fig.cap="Figure 2. Distribution of absolute error between all pairs of methods for estimating R", fig.width=12}
-
-df= read_csv("DATA - baseline_parameters.csv")
 
 data_RMSE_stats <- df %>%
   filter(!is.infinite(RMSE)) %>%
@@ -84,11 +90,11 @@ library("ggpubr")
 ggplot(df) + 
   geom_histogram(aes(RMSE), fill="white", color="black") +
   geom_vline(data = data_RMSE_stats, aes(xintercept = Median), linetype = 2) +
-  geom_text(data = data_RMSE_stats, aes(x = Median*0.5, y = 150, 
-                                        label = paste("Median:", round(Median,2)),
+  geom_text(data = data_RMSE_stats, aes(x = Median*0.5, y = 750, 
+                                        label = round(Median,2),
                                         hjust = 1), size=3) + 
-  geom_text(data = data_RMSE_stats, aes(x = `95_quantile`*1.5, y = 150, 
-                                        label = paste("95th Percentile:", round(`95_quantile`,2)),
+  geom_text(data = data_RMSE_stats, aes(x = `95_quantile`*1.5, y = 750, 
+                                        label = round(`95_quantile`,2),
                                         hjust = 0), size=3) + 
   geom_vline(data = data_RMSE_stats, aes(xintercept = `95_quantile`), linetype = 2) +
   labs(x = "Absolute Error") + 
@@ -117,6 +123,7 @@ ggplot() +
 ```{r echo=F, message = F, warning = F, fig.cap = "Figure 4. The absolute error decreases as the number days used to smooth new cases per day increases.", fig.width=12}
 
 df = read_csv("DATA - vary_smoothing_parameter.csv")
+df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
 
 df <- df %>% group_by(smoothing_window, Comparison) %>%
   summarise(Median = median(RMSE, na.rm=T),
@@ -137,6 +144,7 @@ ggplot(df) +
 ```{r echo=F, message = F, warning = F, fig.cap = "Figure 5. The absolute error decreases as the number days used to calculate $R_t$ is increased", fig.width=12}
 
 df = read_csv("DATA - vary_tau_parameter.csv")
+df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
 
 df <- df %>% group_by(tau, Comparison) %>% summarise(Median = median(RMSE, na.rm=T),
                                                      `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
@@ -154,6 +162,7 @@ ggplot(df) +
 ```{r echo=F, message = F, warning = F, fig.cap = "Figure 6. The absolute error tends to increase as the mean and standard deviation of the generation interval are increased. (A) Median Absolute Error. (B) 95th Percentile in Absolute Error.", fig.width=12}
 
 df = read_csv("DATA - vary_GT_parameter.csv")
+df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
 
 df <- df %>% group_by(GT_mean, GT_SD, Comparison) %>% summarise(Median = median(RMSE, na.rm=T),
                                                     `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
