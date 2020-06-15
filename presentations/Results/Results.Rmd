@@ -86,10 +86,10 @@ ggplot(df) +
   geom_vline(data = data_RMSE_stats, aes(xintercept = Median), linetype = 2) +
   geom_text(data = data_RMSE_stats, aes(x = Median*0.5, y = 150, 
                                         label = paste("Median:", round(Median,2)),
-                                        hjust = 1)) + 
+                                        hjust = 1), size=3) + 
   geom_text(data = data_RMSE_stats, aes(x = `95_quantile`*1.5, y = 150, 
                                         label = paste("95th Percentile:", round(`95_quantile`,2)),
-                                        hjust = 0)) + 
+                                        hjust = 0), size=3) + 
   geom_vline(data = data_RMSE_stats, aes(xintercept = `95_quantile`), linetype = 2) +
   labs(x = "Absolute Error") + 
   scale_x_log10(labels = scales::comma, limits=c(0.0001, 100)) +
