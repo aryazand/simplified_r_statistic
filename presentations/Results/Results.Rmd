@@ -1,5 +1,10 @@
 ---
 title: "Results"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
 header-includes:
 - \usepackage{caption}
 - \captionsetup[figure]{labelformat=empty}
@@ -12,16 +17,36 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## The $R_t$ Estimator Web App
 
-We developed a Shiny web-app that allows users to estimate $R_t$ for the SARS-CoV-2 pandemic in all countries, all states in the United States,, and all counties in the United States with 95% confidence intervals (or credible intervals) for the estimations. The user can estimate R using 4 different methods:
+We developed a Shiny web-app that allows users to estimate $R_t$ for the SARS-CoV-2 pandemic in all countries, all states in the United States,, and all counties in the United States over time with 95% confidence intervals (or credible intervals) for the estimations. The user can estimate R using 4 different methods, all based on new cases per day and the generation interval (Table 1.) 
 
-1. A simple ratio
-2. The method described by Cori et al. (2013)
-3. The method described by Wallinga & Teunis (2004)
-4. The method described by Wallinga & Lipsitch (2007)
+**Table 1. Methods for Estimating $R_t$**. 
 
-How these 4 different methods are implemented are described in the methods section. What is striking, is how well all 4 estimations agree, especially when the incidence-per-day is high (more in the "Comparisons of $R_t$ Esimation Methods" section, below). 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Method                           Description                                                                               Equation                                            Reference                                    
+-------------------------------- ----------------------------------------------------------------------------------------- --------------------------------------------------- ---------------------------------------------
+**Ratio Model**                  $R_t$ is the sum of new cases ($I$) within a time window (size $\tau$) centered on day    $R_t = \frac{\sum_{i = t - \frac{\tau}{2} + D}^{t                                                
+                                 $t + D$ divided by the sum of new cases on a time window centered on day $t$, where $D$   + \frac{\tau}{2} + D}I_i}{\sum_{i = t -                                                          
+                                 is the mean generation interval.                                                          \frac{\tau}{2}}^{t + \frac{\tau}{2}}I_i}$                                                        
 
-The user is able to select a geographic region, and view a graph of how the $R_t$ changes over time for that region. Additionally, the user can view the cumulative number of cases and new cases per day for each region selected. The user can modify parameters associated with the $R_t$ calculation, such as specifying the size of the smoothing window (the number days used for a rolling mean) to smooth the number of new cases per day, the mean and standard deviation of the generation interval, and the number of days to consider when calculating $R_t$ for each day. 
+**Infectiousness Model**         $R_t$ is calculated as the number of new cases ($I$) within a time window (size $\tau$)   $R_t = \frac{\sum_{i = t                            Modified from Cori et al, 2013               
+                                 centered on day $t$ divided by the sum of infectiousness of all individual infected       -\frac{\tau}{2}}^{t+\frac{\tau}{2}}I_i}{\sum_{i =                                                
+                                 prior to the time window, where infectiousness is defined by the probability              0}^{t -\frac{\tau}{2}}I_i*w(i)}$                                                                 
+                                 distribution of the generation interval                                                                                                                                                    
+
+**Transmission Network Model**   For this method, all transmission networks compatible with the observed number of new     $p_{i,j} = \frac{w(t_i - t_j)}{\sum_{i \neq         Wallinga & Teunis, 2004; Obadia et al, 2012  
+                                 cases per day are considered and a pre-defined distribution of generational intervals     k}{w(t_i - t_k)}}$ <br> $R_j = \sum_{i} p_{i,j}$                                                 
+                                 ($w(t)$). The likelihood that a new case $i$ was infected by existing case $j$ is the     <br> $R_t = \bar{R_j}$                                                                           
+                                 probability of a generation interval equal to the time difference between $i$ and $j$                                                                                                      
+                                 ($w(t_i - t_j)$). The relative likelihood of $i$ being infected by $j$ ($p_{ij}$) is                                                                                                       
+                                 $w(t_i - t_j)$ normalized to the likelihood of case $i$ having been infected by all                                                                                                        
+                                 other cases $k$. The likely number of cases produced by $j$ ($R_j$), is the sum of                                                                                                         
+                                 $p_{i,j}$ for all new cases $i$. Thus, $R_t$ is is the average of all $R_j$.                                                                                                               
+
+**Exponential Growth Method**    $R_t$ is derived from rate exponential growth ($r$) observed within a time window (size   $R_t = \frac{1}{\int_{t = 0}^{\infty}               Modified from Wallinga & Lipsitch (2007)     
+                                 $\tau$) centered on day $t$                                                               e^{-rt}w(t)dt}$                                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+The user is able to select one or more geographic regions, and view a graph of how the $R_t$ changes over time for each of those regions. The user can modify parameters associated with the $R_t$ calculation, such as specifying the size of the smoothing window (the number days used for a rolling mean) to smooth the number of new cases per day, the mean and standard deviation of the generation interval, and the number of days to consider when calculating $R_t$ for each day. Additionally, the user can view the cumulative number of cases and new cases per day for each region selected. 
 
 For each geographic region select, the web-app summarizes the the last 3 weeks of $R_t$ into colored score cards. For each week, the score card displays the range of $R_t$ point estimates. The color is based on the average limits of the confidence interval (CI) of $R_t$ for a particular week: the mean upper limit is below 1 (green); the mean point estimate is below 1 but the mean upper limit is above 1 (yellow); the mean point estimate is above 1 but the mean lower limit is below 1 (orange); the mean lower limit is above 1 (red). 
 
