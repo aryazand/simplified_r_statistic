@@ -1,9 +1,9 @@
 ---
 title: "Results"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
-  pdf_document: default
   word_document: default
 header-includes:
 - \usepackage{caption}
@@ -50,6 +50,10 @@ The user is able to select one or more geographic regions, and view a graph of h
 
 For each geographic region select, the web-app summarizes the the last 3 weeks of $R_t$ into colored score cards. For each week, the score card displays the range of $R_t$ point estimates. The color is based on the average limits of the confidence interval (CI) of $R_t$ for a particular week: the mean upper limit is below 1 (green); the mean point estimate is below 1 but the mean upper limit is above 1 (yellow); the mean point estimate is above 1 but the mean lower limit is below 1 (orange); the mean lower limit is above 1 (red). 
 
+![](Figure_1.png)
+
+**Figure 1. Interface of the Web-App**. The user selects one or more regions and a date-range of interest (A, red shaed region). For each of those selected regions and date-range, the $R_t$ value is displayed over time as a line graph on the top graph in the middle pane (B).  Additionally, for the lower graph, the user can toggle between viewing the cumulative number cases and new cases per day for each of the selected regions (C). The user controls parameters for calculating R: namely the size of the smoothing window for smoothing new cases per day,  method for calculating R, the mean and standard deviation of the generation interval, and the number of days used to calculate $R_t$ (D, green-shaded area). For each of the selected regions, a colored score card is displayed for each of the last three weeks based on the average $R_t$ and confidence interval of the estimations (E). If the user hovers over the graphs, additional information about the data is displayed in an information window (F). The date that the data and web-app were last updated are displayed (G). 
+
 ## Comparisons of $R_t$ Esimation Methods
 
 ```{r echo = F, message=F, warning=F} 
@@ -71,11 +75,9 @@ df= read_csv("DATA - baseline_parameters.csv")
 df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
 ```
 
-When using the web-app, visual inspection shows that there is a great deal of agreement between the different methods of estimating $R_t$ (Figure 1 - add in a screenshot). We can quantify the difference in $R_t$ estimations using the absolute error. Here, we compared the $R_t$ values for each day of pandemic for 10 US States using the default parameter ^[smoothing window of 7 days, generation interval with mean of 4 day and standard deviation of 3 days, and time window for $R_t$ calculation of 7 days.], and we find very similar estimates of $R_t$ between the 4 methods - with the median error between any two estimates being `r round(median(df$RMSE, na.rm=T),3)` (Figure 2). 
+When using the web-app, visual inspection shows that there is a great deal of agreement between the different methods of estimating $R_t$ (Figure 1 - add in a screenshot). We can quantify the difference in $R_t$ estimations using the absolute error. Here, we compared the $R_t$ values for each day of pandemic for 10 randomly selected Nations, US States, US Counties using the default parameters ^[smoothing window of 7 days, generation interval with mean of 4 day and standard deviation of 3 days, and time window for $R_t$ calculation of 7 days.], and we find very similar estimates of $R_t$ between the 4 methods - with the median error between any two estimates being `r round(median(df$RMSE, na.rm=T),3)` (Figure 2). 
 
-In particular, we find that as the incidents increase with the time period used to calculate $R_t$ (default 7 days), the difference in $R_t$ estimations between the different methods decreases (Figure 3). Similarly, the disagreement between the methods decreases if the size of the smoothing window is increased (Figure 4) or if the number of days used to calculate $R_t$ is increased (Figure 5). 
-
-An important parameters when caculating $R_t$ is the distribution of the generation interval. We find as the mean or standard deviation in the generation interval increased, there is also increased disagreement in $R_t$ estimations between the four methods (Figure 6).
+We next assessed how the absolute error in estimation are affected by inputs and parameters for each estimation method. First, we find that as the number of new cases increases, the absolute error in $R_t$ estimations between the different methods decreases (Figure 3). Similarly, the absolute error between the $R_t$ estimations decrease if the size of the smoothing window is increased or if the number of days used to calculate $R_t$ is increased (Figures 4, S1, S2). An important parameters when caculating $R_t$ is the distribution of the generation interval. We find as the mean or standard deviation in the generation interval increased, there is also increase in the median absolute error of the $R_t$ estimations between the four methods (Figures 5, S3).
 
 ```{r echo=F, message = F, warning = F, fig.cap="Figure 2. Distribution of absolute error between all pairs of methods for estimating R", fig.width=12}
 
@@ -87,20 +89,24 @@ data_RMSE_stats <- df %>%
             `95_quantile` = quantile(RMSE, 0.95, na.rm=T))
 
 library("ggpubr")
-ggplot(df) + 
+p <- ggplot(df) + 
   geom_histogram(aes(RMSE), fill="white", color="black") +
-  geom_vline(data = data_RMSE_stats, aes(xintercept = Median), linetype = 2) +
-  geom_text(data = data_RMSE_stats, aes(x = Median*0.5, y = 750, 
-                                        label = round(Median,2),
-                                        hjust = 1), size=3) + 
-  geom_text(data = data_RMSE_stats, aes(x = `95_quantile`*1.5, y = 750, 
-                                        label = round(`95_quantile`,2),
-                                        hjust = 0), size=3) + 
-  geom_vline(data = data_RMSE_stats, aes(xintercept = `95_quantile`), linetype = 2) +
+  geom_vline(data = data_RMSE_stats, aes(xintercept = Median), linetype = 2, color="blue") +
+  geom_vline(data = data_RMSE_stats, aes(xintercept = `95_quantile`), linetype = 2, color="red") +
   labs(x = "Absolute Error") + 
   scale_x_log10(labels = scales::comma, limits=c(0.0001, 100)) +
   facet_wrap(~Comparison) + 
   theme_pubr()
+
+q = ggplot_build(p)
+ylim = q$layout$panel_scales_y[[1]]$range$range[[2]]
+
+p + geom_text(data = data_RMSE_stats, 
+               aes(x = Median, label = paste("50th-%tile:\n", round(Median,2))), 
+               y = ylim*0.8, nudge_x=-1, color="blue") + 
+    geom_text(data = data_RMSE_stats, 
+               aes(x = `95_quantile`, label = paste("95th-%tile:\n", round(`95_quantile`,2))), 
+               y = ylim*0.8, nudge_x=1, color="red")
 ```
 
 ```{r echo=F, message = F, warning = F, fig.cap = "Figure 3. The absolute error decreases as incidence increases.", fig.width=12}
@@ -120,12 +126,15 @@ ggplot() +
 
 ```
 
-```{r echo=F, message = F, warning = F, fig.cap = "Figure 4. The absolute error decreases as the number days used to smooth new cases per day increases.", fig.width=12}
+```{r echo=F, message = F, warning = F, fig.cap = "Figure 4. Median absolute error decreases as the size of the smoothing window or days used to calculate $R_t$ ($\\tau$) are increased", fig.width=12}
 
-df = read_csv("DATA - vary_smoothing_parameter.csv")
-df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
+#---------------
+# Smoothing Window
+#----------------
+df.sw = read_csv("DATA - vary_smoothing_parameter.csv")
+df.sw = df.sw %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
 
-df <- df %>% group_by(smoothing_window, Comparison) %>%
+df <- df.sw %>% group_by(smoothing_window, Comparison) %>%
   summarise(Median = median(RMSE, na.rm=T),
             `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
 
@@ -135,39 +144,47 @@ df = df %>% pivot_longer(cols = c("Median", "95th_percentile"), names_to = "erro
 df$error_type =  df$error_type %>% fct_recode(`Median Error` = "Median",
                                               `95th Percentile of Error` = "95th_percentile")
 
-ggplot(df) +
-  geom_line(aes(smoothing_window, error, color=Comparison)) +
-  facet_wrap(~error_type, scales="free") + 
-  theme_pubr()
-```
+a = df %>% filter(error_type == "Median Error") %>% 
+      ggplot() +
+      geom_line(aes(smoothing_window, error, color=Comparison)) +
+      labs(y = "Median Absolute Error", x = "Smooth Window Size (days)") +
+      theme_pubr()
 
-```{r echo=F, message = F, warning = F, fig.cap = "Figure 5. The absolute error decreases as the number days used to calculate $R_t$ is increased", fig.width=12}
+#---------------
+# Tau
+#----------------
+      
+df.tau = read_csv("DATA - vary_tau_parameter.csv")
+df.tau = df.tau %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
 
-df = read_csv("DATA - vary_tau_parameter.csv")
-df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
+df <- df.tau %>% group_by(tau, Comparison) %>%
+  summarise(Median = median(RMSE, na.rm=T),
+            `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
 
-df <- df %>% group_by(tau, Comparison) %>% summarise(Median = median(RMSE, na.rm=T),
-                                                     `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
+df$tau = as.numeric(df$tau)
 
 df = df %>% pivot_longer(cols = c("Median", "95th_percentile"), names_to = "error_type", values_to = "error")
 df$error_type =  df$error_type %>% fct_recode(`Median Error` = "Median",
                                               `95th Percentile of Error` = "95th_percentile")
 
-ggplot(df) +
-  geom_line(aes(tau, error, color=Comparison)) +
-  facet_wrap(~error_type, scales="free") + 
-  theme_pubr()
+b = df %>% filter(error_type == "Median Error") %>% ungroup() %>%
+      ggplot() +
+      geom_line(aes(tau, error, group=Comparison, color=Comparison)) +
+      labs(y = "Median Absolute Error", x = "Tau (days)") +
+      theme_pubr() 
+      
+ggarrange(a,b, ncol=2, labels = c("A", "B"), common.legend=T)
 ```
 
-```{r echo=F, message = F, warning = F, fig.cap = "Figure 6. The absolute error tends to increase as the mean and standard deviation of the generation interval are increased. (A) Median Absolute Error. (B) 95th Percentile in Absolute Error.", fig.width=12}
+```{r echo=F, message = F, warning = F, fig.cap = "Figure 5. The median absolute error tends to increase as the mean and standard deviation of the generation interval are increased.", fig.width=8, fig.height=6}
 
-df = read_csv("DATA - vary_GT_parameter.csv")
-df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
+df.gt = read_csv("DATA - vary_GT_parameter.csv")
+df.gt = df.gt %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
 
-df <- df %>% group_by(GT_mean, GT_SD, Comparison) %>% summarise(Median = median(RMSE, na.rm=T),
+df <- df.gt %>% group_by(GT_mean, GT_SD, Comparison) %>% summarise(Median = median(RMSE, na.rm=T),
                                                     `95th_percentile` = quantile(RMSE, 0.95, na.rm=T))
 
-a = ggplot(df) +
+p = ggplot(df) +
   geom_raster(aes(x=GT_mean, y=GT_SD, fill=Median)) +
   labs(x = "Mean", y="SD") +
   facet_wrap(~Comparison) + 
@@ -176,14 +193,41 @@ a = ggplot(df) +
   scale_fill_continuous(type = "viridis") +
   theme_pubr()
 
-b = ggplot(df) +
-  geom_raster(aes(x=GT_mean, y=GT_SD, fill=`95th_percentile`)) +
-  labs(x = "Mean", y="SD") +
-  facet_wrap(~Comparison) + 
-  scale_x_continuous(breaks = c(2,4,6,8,10)) + 
-  scale_y_continuous(breaks = c(2,4,6,8,10)) + 
-  scale_fill_continuous(type = "viridis") +
-  theme_pubr()
+p
+```
 
-ggarrange(a,b, ncol=2, labels=c("A", "B"))
+
+```{r echo=F, message = F, warning = F, fig.cap = "Figure S1. The absolute error decreases as the size of the smoothing window is increased.", fig.width=12}
+
+ylims = boxplot.stats(df.sw$RMSE)$stats[c(1, 5)]
+df.sw %>% ggplot() + 
+  geom_boxplot(aes(smoothing_window, RMSE, group=smoothing_window)) + 
+  facet_wrap(~Comparison) + 
+  coord_cartesian(ylim = ylims*1.5)
+```
+
+
+```{r echo=F, message = F, warning = F, fig.cap = "Figure S2. The absolute error decreases as the number of days used to calculate $R_t$ is increased.", fig.width=12}
+
+ylims = boxplot.stats(df.tau$RMSE)$stats[c(1, 5)]
+df.tau %>% ggplot() + 
+  geom_boxplot(aes(tau, RMSE, group=tau)) + 
+  facet_wrap(~Comparison) + 
+  coord_cartesian(ylim = ylims*1.5)
+```
+
+
+```{r echo=F, message = F, warning = F, fig.cap = "Figure S3. The absolute error tends to increase as the mean and standard deviation of the generation interval are increased.", fig.width=12, fig.height=12}
+
+p <-df.gt %>% 
+  mutate(GT_mean = as.factor(GT_mean)) %>%
+  mutate(GT_SD = paste("SD =", GT_SD)) %>% mutate(GT_SD = factor(GT_SD, levels = c("SD = 2", "SD = 4", "SD = 6", "SD = 8","SD = 10"))) %>%
+  ggplot() + 
+    geom_density(aes(RMSE, color=GT_mean, group=GT_mean), fill=NA) +
+    labs(x = "Absolute Error") + 
+    scale_x_log10(labels = scales::comma, limits=c(0.0001, 100)) +
+    facet_grid(GT_SD~Comparison) + 
+    theme_pubr()
+
+p
 ```
