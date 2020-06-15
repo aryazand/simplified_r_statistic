@@ -254,7 +254,7 @@ For this estimation method, the serial interval is assumed to be well-approximat
 
 $$ R_t \sim \Gamma(shape = \sum_{s=t+D-\tau+1}^{t+D} I_s, scale = \frac{1}{\sum_{s=t-\tau+1}^{t} I_s})$$
 
-$$ \mathbb{E}[R_t] \approx \frac{\sum_{s=t+D-\tau+1}^{t+D} I_s}{\sum_{s=t-\tau+1}^{t-D} I_s}$$
+$$ \mathbb{E}[R_t] \approx \frac{\sum_{s=t+D-\tau+1}^{t+D} I_s}{\sum_{s=t-\tau+1}^{t} I_s}$$
 
 We do this in R with the following code: 
 
@@ -313,9 +313,10 @@ ggplot(df) +
 This method is based on the idea that $R_t$ can be estimated from a network of pairs of cases. The likelihood that case $j$ infected case $i$ is $w(t_i - t_j)$ where $w(t)$ is the distribution of generation interval (i.e. the relative probability a case will transmit the infection $t$ units of time after the start of the infection) and $t_i$ and $t_j$ are the times at which cases $i$ and $j$ were infected, respectively. The relative likelihood that case $j$ infected case $i$ is $w(t_i - t_j)$ normalized to the probability of that any other case $k$ infected $i$: 
 
 $$ p_{i,j} = \frac{w(t_i - t_j)}{\sum_{i \neq k}{w(t_i - t_k)}}$$
-Thus, the effective reproduction value for case $j$ ($R_j$) is the sum of $p_{i,j}$ for all pairs $i$ and $j$. Then the effective reproduction value ($R_t$) is the mean of all $R_j$ at a given time. 
+Thus, the effective reproduction value for case $j$ ($R_j$) is the sum of $p_{i,j}$ for all pairs $i$ and $j$. And the overall effective reproduction value ($R_t$) is the mean of all $R_j$ at a given time. 
 
 $$R_j = \sum_{i} \frac{w(t_i - t_j)}{\sum_{i \neq k}{w(t_i - t_k)}}$$
+$$ R_t = \bar{R_j} $$
 
 Wallinga & Teunis (2004) describes using a maximum-likelihood estimation to determine which infections network (and thus pairs of $i$ and $j$) has the highest likelihood of producing the observed epidemic curve. Details can be found in their [publication](https://academic.oup.com/aje/article/160/6/509/79472). We use the R0 package to estimate $R_t$ and a confidence interval for webapp, as follows: 
 
