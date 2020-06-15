@@ -1,6 +1,10 @@
 library("tidyverse")
 library("RcppRoll")
+library("furrr")
 source("./simplified_r_statistic/Estimate_R_Functions.R")
+
+no_cores <- availableCores() - 1
+plan(multicore, workers = no_cores)
 
 # Process Arguments
 args = commandArgs(trailingOnly=TRUE)
@@ -33,9 +37,9 @@ parameter_combos = cross(parameter_list)
 
 data = read_csv("./simplified_r_statistic/case_data.csv")
 set.seed(19890616)
-data_1 = data %>% filter(region_type == "state") %>% filter(region %in% sample(unique(.$region), 30))
-data_2 = data %>% filter(region_type == "county") %>% filter(region %in% sample(unique(.$region), 30))
-data_3 = data %>% filter(region_type == "nation") %>% filter(region %in% sample(unique(.$region), 30))
+data_1 = data %>% filter(region_type == "state") %>% filter(region %in% sample(unique(.$region), 10))
+data_2 = data %>% filter(region_type == "county") %>% filter(region %in% sample(unique(.$region), 10))
+data_3 = data %>% filter(region_type == "nation") %>% filter(region %in% sample(unique(.$region), 10))
 
 data = bind_rows(data_1, data_2, data_3)
 
