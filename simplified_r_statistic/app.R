@@ -130,8 +130,8 @@ ui <- fluidPage(
                 wellPanel(style = "height:100px",
                     dateRangeInput(inputId = "dateRange",
                                     label = "Select Date Range:",
-                                    start = Sys.Date() - 56,
-                                    end = Sys.Date())
+                                    start = max(data$date) - 56,
+                                    end = max(data$date))
               )),
               column(4, 
                 tags$span("This app allows you to view the instataneous reproduction rate (Rt) of SARS-CoV-2 virus over time in
