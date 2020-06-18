@@ -110,9 +110,8 @@ ui <- fluidPage(
     # Title and Description
     # *************
     
-    # Application title
-    titlePanel(title = "", windowTitle = "Rt Estimator"),
-    navbarPage(HTML("R<sub>t</sub> Estimator"),
+    navbarPage(HTML("Rt Estimator"),
+        # Window Title
         tabPanel("Main", fluid = TRUE,
             fluidRow(withMathJax(includeMarkdown("Introduction.md"))),
             
