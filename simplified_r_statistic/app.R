@@ -113,56 +113,58 @@ ui <- fluidPage(
     navbarPage(HTML("Rt Estimator"),
         # Window Title
         tabPanel("Main", fluid = TRUE,
-            fluidRow(withMathJax(includeMarkdown("Introduction.md"))),
             
+            #--------------
+            # Location and Date
+            #--------------
+            fluidRow(
+              column(4, 
+                wellPanel(style = "height:100px",
+                   selectInput(inputId = "geographic_location",
+                               label = "Search Region (Country, US State, or US County):",
+                               choices = c("Select regions" = "", unique(DATA$region)),
+                               multiple = T,
+                               selected = "World")
+              )),
+              column(4,
+                wellPanel(style = "height:100px",
+                    dateRangeInput(inputId = "dateRange",
+                                    label = "Select Date Range:",
+                                    start = Sys.Date() - 56,
+                                    end = Sys.Date())
+              )),
+              column(4, 
+                tags$span("This app allows you to view the instataneous reproduction rate (Rt) of SARS-CoV-2 virus over time in
+                          all countries, US States, and US Counties using 4 different methods. More information on how to use this
+                          app and the how to interpret the graphs can be found in the Inroduction page.")      
+              )
+              
+            ),
             # ---------------
             # Controls
             # ---------------
-            
+            fluidRow(style="font-size: 0.85em",
             column(3,
-                wellPanel(
-                    
-                    selectInput(inputId = "geographic_location",
-                                label = "Search & Select Geographic Location (multiple selection allowed):",
-                                choices = c("Select regions" = "", unique(DATA$region)),
-                                multiple = T,
-                                selected = "World"),
-                    
-                    dateRangeInput(inputId = "dateRange",
-                                   label = "select dates",
-                                   start = Sys.Date() - 56,
-                                   end = Sys.Date())
-                ), 
         
                 wellPanel(
-                    
-                    tags$h4("Smooth Daily New Cases"),
-                    tags$p("Smooth new cases per day with a rolling mean to reduce noise", style="font-size:85%"),
-                    
+                  tags$p("Controls:", style="font-size:20px; font-weight:bold"),
+                  tags$b("1. Select method for estimating Rt"),
+                  tags$p("Intro page explains each method", style="margin-bottom:1.5em"),
+                  checkboxGroupInput(inputId = "R_type", 
+                                     label = NULL,
+                                     choiceNames = c("Simple Ratio", "Cori et al (2013)", "Wallinga & Teunis (2004)", "Wallinga & Lipsitch (2007)"),
+                                     choiceValues = c("KN", "Cori", "TD", "WL"),
+                                     selected = "KN"),
+                  
+                    tags$b("2. Smoothing Window"),
+                    tags$p("We smooth new cases per day with a rolling mean to reduce noise. Select the size of the window for the rolling mean:"),
                     sliderInput(inputId = "smoothing_window",
-                                label = "Smoothing Window Size",
+                                label = NULL,
                                 min = 1, max = 14, value = 7, step = 1),
                     
-                    tags$h4("Method for Estimating R"),
-                    
-                    tags$head(
-                        tags$style(
-                            HTML(".checkbox-inline {margin-left: 0px; margin-right: 10px;}
-                                  .checkbox-inline+.checkbox-inline {margin-left: 0px; margin-right: 10px;}"
-                                 )
-                        ) 
-                    ),
-                    
-                    checkboxGroupInput(inputId = "R_type", 
-                                       label = "Select Method of R Calculation",
-                                       choiceNames = c("Simple", "Cori et al (2013)", "Wallinga & Teunis (2004)", "Wallinga & Lipsitch (2007)"),
-                                       choiceValues = c("KN", "Cori", "TD", "WL"),
-                                       inline = T,
-                                       selected = "KN"),
-                    
-                    tags$h4("Define Parameters of Generation Interval"),
+                    tags$b("3. Define Generation Interval"),
                     tags$p("Generation Inteval is the time different between when one person is infected to when they cause an infection in another person. 
-                           All methods of estimating R dependent on this interval", style="font-size:85%"),
+                           All methods of estimating Rt are dependent on this interval"),
                     
                     sliderInput(inputId = "var.si_mean",
                                 label = "Mean Generation Interval (days)",
@@ -172,12 +174,11 @@ ui <- fluidPage(
                                 label = "Standard Deviation of Generation Interval (days)",
                                 min = 1, max = 10, value = 3, step = 1),
                     
-                    tags$h4("Period Size for Estimating R"),
-                    
-                    tags$p("When estimating R we compare the number of new cases in two successive periods of time.", style="font-size:85%"),
-                    
+                    tags$b("4. Period Size"),
+                    tags$p("For most methods of estimating Rt (except for Wallinga & Teunis Method), we analyze the number of new cases
+                           over a period of days. Select the size of this period:"),
                     sliderInput(inputId = "var.window_size",
-                                label = "Period Size",
+                                label = NULL,
                                 min = 1, max = 14, value = 7, step = 1)
                 )
             ),
@@ -210,10 +211,12 @@ ui <- fluidPage(
             column(3, 
                    
                fixedRow(
+                   tags$h4("Weekly Score Card:", style="font-size:20px; font-weight:bold"),
                    htmlOutput("Score_Card")
                ),
                
                fixedRow(
+                   tags$h4("Hover Info:", style="font-size:20px; font-weight:bold"),
                    verbatimTextOutput("Plot_Info")
                ),
                
@@ -221,8 +224,10 @@ ui <- fluidPage(
                    uiOutput("Last_Update")
                )
             )
-        ), 
-        tabPanel("Code", fluid = TRUE,
+        )), 
+        
+        tabPanel("Introduction", fluid=TRUE, withMathJax(includeMarkdown("Introduction.md"))),
+        tabPanel("Methods", fluid = TRUE,
                  tags$head(tags$style(HTML(".node:hover polygon {fill: red;} .node {cursor:pointer}"))),
                  useShinyjs(),
                  column(6, uiOutput('flow_chart') %>% withSpinner(color="#0dc5c1")),
@@ -426,7 +431,7 @@ server <- function(input, output, clientData, session) {
 
             p = ggplot(data = data) +
                 geom_hline(yintercept = 1, linetype = 2) +
-                labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
+                #labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
                 scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
                 coord_cartesian(xlim = plot_R.ranges$x, ylim = c(0.5, ymax), expand = FALSE) +
                 custom_plot_theme() +
