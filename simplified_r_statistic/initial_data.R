@@ -1,7 +1,7 @@
 # This scrip calculates the world data for app
-
-source("./Estimate_R_Functions.R")
-DATA = read_csv("./case_data.csv", col_types = "ccccDddl")
+library(tidyverse)
+source("./simplified_r_statistic/Estimate_R_Functions.R")
+DATA = read_csv("./simplified_r_statistic/case_data.csv", col_types = "ccccDddl")
 
 
 # Load Initial Data to Display ======================
