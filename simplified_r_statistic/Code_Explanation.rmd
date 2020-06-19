@@ -270,8 +270,8 @@ df = left_join(data, simpleR.df, by="date")
 library(ggpubr)
 
 ggplot(df) + 
-  geom_ribbon(aes(x = date,  ymin=KN.R_Quantile_025, ymax=KN.R_Quantile_975, group = region), alpha=0.15) +
-  geom_line(aes(x = date, y = KN.R_mean, group = region), size =1.25) +
+  geom_ribbon(aes(x = date,  ymin=`Simple Ratio.R_Quantile_025`, ymax=`Simple Ratio.R_Quantile_975`, group = region), alpha=0.15) +
+  geom_line(aes(x = date, y = `Simple Ratio.R_mean`, group = region), size =1.25) +
   geom_hline(yintercept = 1, linetype = 2) +
   labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
   scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
@@ -329,8 +329,8 @@ WT.df = EstimateR.WT(date = data$date, Is = data$new_cases_smoothed, si_mean = v
 df = left_join(data, WT.df, by="date")
 
 ggplot(df) + 
-  geom_ribbon(aes(x = date,  ymin=TD.R_Quantile_025, ymax=TD.R_Quantile_975, group = region), alpha=0.15) +
-  geom_line(aes(x = date, y = TD.R_mean, group = region), size =1.25) +
+  geom_ribbon(aes(x = date,  ymin=WT.R_Quantile_025, ymax=WT.R_Quantile_975, group = region), alpha=0.15) +
+  geom_line(aes(x = date, y = WT.R_mean, group = region), size =1.25) +
   geom_hline(yintercept = 1, linetype = 2) +
   labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
   scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
