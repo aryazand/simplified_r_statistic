@@ -224,8 +224,6 @@ server <- function(input, output, clientData, session) {
       input$var.si_sd,
       input$var.tau)
     },{
-      print("doing an update (1)")
-      
       # Validate basic have been selected
       validate(
         need(input$geographic_location != "", "Please select a region")
@@ -293,7 +291,6 @@ server <- function(input, output, clientData, session) {
     
     observeEvent(input$R_type,
       {
-        print("doing an update (2)")
         validate(
           need(input$geographic_location != "", "Please select a region")
         )
@@ -347,7 +344,6 @@ server <- function(input, output, clientData, session) {
     # ** Convert to long format ================= 
     
     observeEvent(data_holder$data, {
-      print("doing an update (3)")
       data = data_holder$data
       
       data = data %>% pivot_longer(cols=contains(".R_"), 
