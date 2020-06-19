@@ -224,6 +224,7 @@ server <- function(input, output, clientData, session) {
       input$var.si_sd,
       input$var.tau)
     },{
+      print("doing an update (1)")
       
       # Validate basic have been selected
       validate(
@@ -286,12 +287,13 @@ server <- function(input, output, clientData, session) {
         data = data %>% unnest(CD) %>% ungroup()
         
         data_holder$data <- data
-    })
+    }, ignoreInit = T)
     
     # ** Update on R_type Change ================= 
     
     observeEvent(input$R_type,
       {
+        print("doing an update (2)")
         validate(
           need(input$geographic_location != "", "Please select a region")
         )
@@ -340,11 +342,12 @@ server <- function(input, output, clientData, session) {
         data = data %>% unnest(CD) %>% ungroup()
         
         data_holder$data <- data
-    })
+    }, ignoreInit = T)
     
     # ** Convert to long format ================= 
     
     observeEvent(data_holder$data, {
+      print("doing an update (3)")
       data = data_holder$data
       
       data = data %>% pivot_longer(cols=contains(".R_"), 
@@ -357,7 +360,7 @@ server <- function(input, output, clientData, session) {
       levels(data$Method)[3:4] =c("Walinga & Teunis", "Walinga & Lipsitch")
       
       data_holder$data2 = data     
-    })
+    }, ignoreInit = T)
     
     ## Render R Estimation Plot =====================
     
@@ -452,8 +455,6 @@ server <- function(input, output, clientData, session) {
         return(labels)
     }
     
-    ## Render Secondary Plot =========================
-    
     ## ** Create Total_Cases Plot =========================
     
     plot_TotalCases <- reactive({
@@ -467,7 +468,8 @@ server <- function(input, output, clientData, session) {
             scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
             labs(x = "Date") +
             custom_plot_theme() +
-            theme(axis.text.x = element_text(angle=45, hjust=1))
+            theme(axis.text.x = element_text(angle=45, hjust=1),
+                  legend.position = "none")
 
         return(p)
     })
@@ -486,7 +488,8 @@ server <- function(input, output, clientData, session) {
             scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
             labs(x = "Date") +
             custom_plot_theme() +
-            theme(axis.text.x = element_text(angle=45, hjust=1))
+            theme(axis.text.x = element_text(angle=45, hjust=1),
+                  legend.position = "none")
 
         return(p)
     })
@@ -558,74 +561,74 @@ server <- function(input, output, clientData, session) {
 
     # Render Score Card ==========
     
-    # output$Score_Card <- renderUI({
-    # 
-    #     data = data_holder$data
-    # 
-    #     selected_regions = input$geographic_location
-    #     if(is.null(selected_regions)){selected_regions = "World"}
-    # 
-    #     week_start = c(21,14,7)
-    #     score_cards = vector(mode="list", length=length(selected_regions))
-    # 
-    #     for(i in 1:length(selected_regions)) {
-    #         data_subset = data %>% filter(region == selected_regions[i])
-    # 
-    #         score_cards_j = vector(mode="list", length=length(week_start))
-    # 
-    #         for (j in seq_along(week_start)) {
-    # 
-    #             data_subset.2 = data_subset %>% filter(date >= (Sys.Date() - (week_start[j]+7)) & date < (Sys.Date() - week_start[j]))
-    #             data_subset.2 = data_subset.2 %>% dplyr::select(starts_with(input$R_type))
-    # 
-    #             if(nrow(data_subset.2) == 0){
-    #                 next
-    #             }
-    # 
-    #             # Get mean lower and upper bounds of R estimates
-    #             Rmax = data_subset.2 %>%
-    #                 dplyr::select(contains("R_Quantile_975")) %>%
-    #                 unlist() %>% mean(na.rm=T) %>% round(2)
-    # 
-    #             Rmin = data_subset.2 %>%
-    #                 dplyr::select(contains("R_Quantile_025")) %>%
-    #                 unlist() %>% mean(na.rm=T) %>% round(2)
-    # 
-    #             Rmean = data_subset.2 %>%
-    #                 dplyr::select(contains("R_mean")) %>%
-    #                 unlist() %>% mean(na.rm=T) %>% round(2)
-    # 
-    #             if(Rmean < 1 & Rmax <= 1) {
-    #                 color_assingment = "rgb(0,255,0)"
-    #             } else if (Rmean < 1 & Rmax > 1) {
-    #                 color_assingment = "rgb(255,255,0)"
-    #             } else if (Rmean >= 1 & Rmin < 1) {
-    #                 color_assingment = "rgb(255,165,0)"
-    #             } else if (Rmean >= 1 & Rmin >= 1) {
-    #                 color_assingment = "rgb(255,0,0)"
-    #             }
-    # 
-    #             score_card_dates = paste(format(Sys.Date() - (week_start[j]+7), "%b-%d"), "to",format(Sys.Date() - week_start[j], "%b-%d"))
-    # 
-    #             score_cards_j[j] =
-    # 
-    #                 paste("<svg height='100' width='100'>",
-    #                         "<rect width='100' height='100' rx='15' fill='", color_assingment, "' />",
-    #                         "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='30', text-anchor='middle'>Average R Range:</text>",
-    #                         "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='50', text-anchor='middle'>",score_card_dates,"</text>",
-    #                         "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='70', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
-    #                         "Sorry, your browser does not support inline SVG.",
-    #                     "</svg>", sep="")
-    #         }
-    # 
-    #         score_cards[i] = paste(score_cards_j, collapse=" ")
-    #         score_cards[i] = paste("<p><b>",input$geographic_location[i],"</b></p>", score_cards[i])
-    # 
-    #      }
-    # 
-    #      score_cards = paste(score_cards, collapse=" ")
-    #      HTML(score_cards)
-    # })
+    output$Score_Card <- renderUI({
+
+        data = data_holder$data
+
+        selected_regions = input$geographic_location
+        if(is.null(selected_regions)){selected_regions = "World"}
+
+        week_start = c(21,14,7)
+        score_cards = vector(mode="list", length=length(selected_regions))
+
+        for(i in 1:length(selected_regions)) {
+            data_subset = data %>% filter(region == selected_regions[i])
+
+            score_cards_j = vector(mode="list", length=length(week_start))
+
+            for (j in seq_along(week_start)) {
+
+                data_subset.2 = data_subset %>% filter(date >= (Sys.Date() - (week_start[j]+7)) & date < (Sys.Date() - week_start[j]))
+                data_subset.2 = data_subset.2 %>% dplyr::select(starts_with(input$R_type))
+
+                if(nrow(data_subset.2) == 0){
+                    next
+                }
+
+                # Get mean lower and upper bounds of R estimates
+                Rmax = data_subset.2 %>%
+                    dplyr::select(contains("R_Quantile_975")) %>%
+                    unlist() %>% mean(na.rm=T) %>% round(2)
+
+                Rmin = data_subset.2 %>%
+                    dplyr::select(contains("R_Quantile_025")) %>%
+                    unlist() %>% mean(na.rm=T) %>% round(2)
+
+                Rmean = data_subset.2 %>%
+                    dplyr::select(contains("R_mean")) %>%
+                    unlist() %>% mean(na.rm=T) %>% round(2)
+
+                if(Rmean < 1 & Rmax <= 1) {
+                    color_assingment = "rgb(0,255,0)"
+                } else if (Rmean < 1 & Rmax > 1) {
+                    color_assingment = "rgb(255,255,0)"
+                } else if (Rmean >= 1 & Rmin < 1) {
+                    color_assingment = "rgb(255,165,0)"
+                } else if (Rmean >= 1 & Rmin >= 1) {
+                    color_assingment = "rgb(255,0,0)"
+                }
+
+                score_card_dates = paste(format(Sys.Date() - (week_start[j]+7), "%b-%d"), "to",format(Sys.Date() - week_start[j], "%b-%d"))
+
+                score_cards_j[j] =
+
+                    paste("<svg height='100' width='100'>",
+                            "<rect width='100' height='100' rx='15' fill='", color_assingment, "' />",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='30', text-anchor='middle'>Average R Range:</text>",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='50', text-anchor='middle'>",score_card_dates,"</text>",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='70', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
+                            "Sorry, your browser does not support inline SVG.",
+                        "</svg>", sep="")
+            }
+
+            score_cards[i] = paste(score_cards_j, collapse=" ")
+            score_cards[i] = paste("<p><b>",input$geographic_location[i],"</b></p>", score_cards[i])
+
+         }
+
+         score_cards = paste(score_cards, collapse=" ")
+         HTML(score_cards)
+    })
     
     #-----------
     # Code Page
