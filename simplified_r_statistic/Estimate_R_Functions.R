@@ -35,20 +35,26 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
     
   # Basic Ratio
   df = df %>%
-    mutate(denominator = roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA))) %>%
+    mutate(denominator = round(roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA)))) %>%
     mutate(numerator = lead(denominator, si_mean)) %>%
     mutate(numerator = replace(numerator, which(numerator == 0), NA)) %>%
+    mutate(denominator = replace(denominator, which(denominator == 0), NA)) %>%
     mutate(`Simple Ratio.R_mean` = numerator/denominator)
   
+  # remove any ratios involving 0 new_cases in denominator or numerator
+  df_2 = df %>% filter(!is.na(`Simple Ratio.R_mean`))
+  
   # Confidence Interval
-  pois_tests = map2(df$numerator, df$denominator, function(i,j) poisson.test(x=c(i,j), alternative="two.sided"))
-  pois_tests = tranpose(pois_test) %>% map(unlist)
+  pois_tests = map2(df_2$numerator, df_2$denominator, function(i,j) poisson.test(x=c(i,j), alternative="two.sided"))
+  pois_tests = transpose(pois_tests) %>% .$conf.int %>% unlist() %>% matrix(ncol=2, byrow=T)
     
-  df = df %>% mutate(`Simple Ratio.R_Quantile_025` = pois_tests$`025`) %>%
-              mutate(`Simple Ratio.R_Quantile_975` = pois_tests$`025`) %>%
+  df_2 = df_2 %>% mutate(`Simple Ratio.R_Quantile_025` = pois_tests[,1], 
+                         `Simple Ratio.R_Quantile_975` = pois_tests[,2])
+  
+  df = left_join(df, df_2, by=colnames(df)[colnames(df) %in% colnames(df_2)])
   
   # Select columns to output
-  dplyr::select(date, `Simple Ratio.R_mean`, `Simple Ratio.R_Quantile_025`, `Simple Ratio.R_Quantile_975`)
+  df = df %>% dplyr::select(date, `Simple Ratio.R_mean`, `Simple Ratio.R_Quantile_025`, `Simple Ratio.R_Quantile_975`)
   
   return(df)
 }
