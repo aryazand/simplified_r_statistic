@@ -10,7 +10,6 @@
 
 # Load Packages ========================
 
-library(plotly)
 library(shiny)
 library(tidyverse)
 library(ggpubr)
@@ -19,13 +18,12 @@ library(EpiEstim)
 library(R0)
 library(shinyjs)
 library(shinycssloaders)
-library(grid)
 
 # Load Data ========================
 
 source("./Estimate_R_Functions.R")
 DATA = read_csv("./case_data.csv", col_types = "ccccDddl")
-initial_data = read_csv("./initial_data.csv")
+initial_data = read_csv("./initial_data.csv", col_types = "ccccDddldddd")
 
 # Javascript Functions ===================
 
@@ -77,7 +75,7 @@ wlR_node_js = "var elem = document.getElementById('wallinga-lipsitch-2007');
 
 ui <- fluidPage(
     
-    navbarPage(HTML("Rt Estimator"),
+    navbarPage(title = "Rt Estimator",
     
         tabPanel("Main", fluid = TRUE,
             
@@ -85,7 +83,7 @@ ui <- fluidPage(
             
             fluidRow(
               column(4, 
-                wellPanel(style = "height:100px",
+                wellPanel(
                    selectInput(inputId = "geographic_location",
                                label = "Search Region (Country, US State, or US County):",
                                choices = c("Select regions" = "", unique(DATA$region)),
@@ -93,16 +91,17 @@ ui <- fluidPage(
                                selected = "World")
               )),
               column(4,
-                wellPanel(style = "height:100px",
+                wellPanel(
                     dateRangeInput(inputId = "dateRange",
                                     label = "Select Date Range:",
-                                    start = max(data$date) - 56,
-                                    end = max(data$date))
+                                    start = max(DATA$date) - 56,
+                                    end = max(DATA$date))
               )),
               column(4, 
                 tags$span("This app allows you to view the instataneous reproduction rate (Rt) of SARS-CoV-2 virus over time in
-                          all countries, US States, and US Counties using 4 different methods. More information on how to use this
-                          app and the how to interpret the graphs can be found in the Inroduction page.")      
+                          all countries, US States, and US Counties using 4 different methods. The Rt value are displayed with upper 
+                          and lower bounds of estimates. More information on how to use and interpret the app can be found in 
+                          the Inroduction page.")      
               )
               
             ),
@@ -176,20 +175,38 @@ ui <- fluidPage(
               
             ),
             
+            ## * Left Panel ============================
+            
             column(3, 
-                   
                fixedRow(
-                   tags$h4("Weekly Score Card:", style="font-size:20px; font-weight:bold"),
+                 tags$p("However over near lines in plots for more information")
+               ),
+               
+               ## ** Score Cards ============================
+               fixedRow(
+                   tags$h4("Weekly Report Card:", style="font-size:20px; font-weight:bold"),
+                   HTML("<p> For each week displayed, 
+                        <span style='font-weight: bold; background-color: limegreen'>green</span> 
+                        indicates that on average the upper bound of the Rt was below 1. 
+                        <span style='font-weight: bold; background-color: yellow'>Yellow</span> 
+                        indicates that on average Rt esimate was below 1, but the upper bound of the estimate was above 1. 
+                        <span style='font-weight: bold; background-color: orange'>Orange</span> 
+                        indicates that on average the Rt esimate was above 1, but the lower bound of the estimate was below 1. 
+                        <span style='font-weight: bold; background-color: red'>Red</span> 
+                        indicates that on average the lower bound of the Rt estimate was above 1."),
                    htmlOutput("Score_Card")
                ),
                
                tags$br(),
                
+               ## ** Update Info ============================
                fixedRow(
                    uiOutput("Last_Update")
                )
             )
         )), 
+        
+        # Other Tabs ===================
         
         tabPanel("Introduction", fluid=TRUE, withMathJax(includeMarkdown("Introduction.md"))),
         tabPanel("Methods", fluid = TRUE,
@@ -402,7 +419,9 @@ server <- function(input, output, clientData, session) {
           labs(x="Date", y="Rt Estimate") +
           custom_plot_theme() +
           theme(axis.text.x = element_text(angle=45, hjust=1),
-                legend.position = "bottom")
+                legend.position = "bottom",
+                legend.key.size = unit(1.5, "line"),
+                legend.text = element_text(size=15))
       return(p)
     })
     
@@ -410,7 +429,7 @@ server <- function(input, output, clientData, session) {
     
     output$hover_info_1 <- renderUI({
       hover <- input$plot_hover_1
-      point <- nearPoints(data_holder$data2, hover, threshold = 10, maxpoints = 1, yvar="mean", addDist = TRUE)
+      point <- nearPoints(data_holder$data2, hover, threshold = 20, maxpoints = 1, yvar="mean", addDist = TRUE)
       if (nrow(point) == 0) return(NULL)
       
       # calculate point position INSIDE the image as percent of total dimensions
@@ -516,7 +535,7 @@ server <- function(input, output, clientData, session) {
     output$hover_info_2 <- renderUI({
       # Taken from: https://gitlab.com/snippets/16220
       hover <- input$plot_hover_2
-      point <- nearPoints(data_holder$data, hover, threshold = 10, maxpoints = 1, addDist = TRUE)
+      point <- nearPoints(data_holder$data, hover, threshold = 20, maxpoints = 1, addDist = TRUE)
       if (nrow(point) == 0) return(NULL)
       
       # calculate point position INSIDE the image as percent of total dimensions
@@ -528,7 +547,6 @@ server <- function(input, output, clientData, session) {
       left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
       top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
       
-      print(hover)
       # create style property fot tooltip
       # background color is set so tooltip is a bit transparent
       # z-index is set so we are sure are tooltip will be on top
@@ -559,7 +577,7 @@ server <- function(input, output, clientData, session) {
     
     output$Score_Card <- renderUI({
 
-        data = data_holder$data
+        data = data_holder$data2
 
         selected_regions = input$geographic_location
         if(is.null(selected_regions)){selected_regions = "World"}
@@ -575,24 +593,16 @@ server <- function(input, output, clientData, session) {
             for (j in seq_along(week_start)) {
 
                 data_subset.2 = data_subset %>% filter(date >= (Sys.Date() - (week_start[j]+7)) & date < (Sys.Date() - week_start[j]))
-                data_subset.2 = data_subset.2 %>% dplyr::select(starts_with(input$R_type))
+                data_subset.2 = data_subset.2 %>% filter(Method %in% input$R_type)
 
                 if(nrow(data_subset.2) == 0){
                     next
                 }
 
                 # Get mean lower and upper bounds of R estimates
-                Rmax = data_subset.2 %>%
-                    dplyr::select(contains("R_Quantile_975")) %>%
-                    unlist() %>% mean(na.rm=T) %>% round(2)
-
-                Rmin = data_subset.2 %>%
-                    dplyr::select(contains("R_Quantile_025")) %>%
-                    unlist() %>% mean(na.rm=T) %>% round(2)
-
-                Rmean = data_subset.2 %>%
-                    dplyr::select(contains("R_mean")) %>%
-                    unlist() %>% mean(na.rm=T) %>% round(2)
+                Rmax = data_subset.2$Quantile_975 %>% mean(na.rm=T) %>% round(2)
+                Rmin = data_subset.2$Quantile_025 %>% mean(na.rm=T) %>% round(2)
+                Rmean = data_subset.2$mean %>% mean(na.rm=T) %>% round(2)
 
                 if(Rmean < 1 & Rmax <= 1) {
                     color_assingment = "rgb(0,255,0)"
@@ -605,14 +615,16 @@ server <- function(input, output, clientData, session) {
                 }
 
                 score_card_dates = paste(format(Sys.Date() - (week_start[j]+7), "%b-%d"), "to",format(Sys.Date() - week_start[j], "%b-%d"))
-
+                score_card_weeks = c("Three Weeks Ago", "Two Week Ago", "This Past Week")[j]
+                
                 score_cards_j[j] =
 
                     paste("<svg height='100' width='100'>",
                             "<rect width='100' height='100' rx='15' fill='", color_assingment, "' />",
-                            "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='30', text-anchor='middle'>Average R Range:</text>",
-                            "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='50', text-anchor='middle'>",score_card_dates,"</text>",
-                            "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='70', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='20', text-anchor='middle'>",score_card_weeks,"</text>",
+                            "<text fill='#000000' font-size='8' font-family='Verdana' x='50%' y='40', text-anchor='middle'>",score_card_dates,"</text>",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='60', text-anchor='middle'>Average R Range:</text>",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='80', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
                             "Sorry, your browser does not support inline SVG.",
                         "</svg>", sep="")
             }
@@ -626,9 +638,7 @@ server <- function(input, output, clientData, session) {
          HTML(score_cards)
     })
     
-    #-----------
-    # Code Page
-    #------------
+    # Code Page==========
     
     # Load html
     output$md_file <- renderUI({withMathJax(includeHTML("Code_Explanation.html"))})
@@ -655,9 +665,8 @@ server <- function(input, output, clientData, session) {
     observe({shinyjs::onclick("node16", runjs(wlR_node_js))})
     observe({shinyjs::onclick("node17", runjs(estimateR_mainnode_js))})
     
-    #-----------
-    # Update Info
-    # -----------
+
+    # Update Info===============
     
     output$Last_Update <- renderUI({
         includeHTML("Update.html")
