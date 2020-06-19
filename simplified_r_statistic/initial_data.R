@@ -25,4 +25,4 @@ data <- data %>%
   ungroup() %>%
   dplyr::select(-estimateR)
 
-write_csv(data, "initial_data.csv")
+write_csv(data, "./simplified_r_statistic/initial_data.csv")
