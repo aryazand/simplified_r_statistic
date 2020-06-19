@@ -37,12 +37,12 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
     mutate(rolling_sum = roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA))) %>%
     mutate(numerator = lead(rolling_sum, si_mean)) %>%
     mutate(numerator = replace(numerator, which(numerator == 0), NA)) %>%
-    mutate(KN.R_mean = numerator/rolling_sum) %>%
+    mutate(`Simple Ratio.R_mean` = numerator/rolling_sum) %>%
     mutate(k = numerator) %>%
-    mutate(theta = KN.R_mean/k) %>%
-    mutate(KN.R_Quantile_025 = qgamma(0.025, shape = k, scale = theta)) %>%
-    mutate(KN.R_Quantile_975 = qgamma(0.975, shape = k, scale = theta)) %>%
-    dplyr::select(date, KN.R_mean, KN.R_Quantile_025, KN.R_Quantile_975)
+    mutate(theta = `Simple Ratio.R_mean`/k) %>%
+    mutate(`Simple Ratio.R_Quantile_025` = qgamma(0.025, shape = k, scale = theta)) %>%
+    mutate(`Simple Ratio.R_Quantile_975` = qgamma(0.975, shape = k, scale = theta)) %>%
+    dplyr::select(date, `Simple Ratio.R_mean`, `Simple Ratio.R_Quantile_025`, `Simple Ratio.R_Quantile_975`)
   
   return(df)
 }
@@ -81,9 +81,9 @@ EstimateR.WT <- function(date, Is, si_mean, si_sd) {
   
   df = data.frame(
     date = as.Date(names(r_estimates$estimates[["TD"]]$R), origin="1970-01-01"),
-    TD.R_mean = r_estimates$estimates[[1]]$R,
-    TD.R_Quantile_025 = r_estimates$estimates[[1]]$conf.int[[1]],
-    TD.R_Quantile_975 = r_estimates$estimates[[1]]$conf.int[[2]]
+    `WT.R_mean` = r_estimates$estimates[[1]]$R,
+    `WT.R_Quantile_025` = r_estimates$estimates[[1]]$conf.int[[1]],
+    `WT.R_Quantile_975` = r_estimates$estimates[[1]]$conf.int[[2]]
   ) 
   
   # for some reason last R estimate from TD always ends up as 0. So we'll remove that
