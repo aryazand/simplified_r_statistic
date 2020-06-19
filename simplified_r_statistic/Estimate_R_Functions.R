@@ -33,16 +33,22 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
   
   df = data.frame(date, Is)
     
+  # Basic Ratio
   df = df %>%
-    mutate(rolling_sum = roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA))) %>%
-    mutate(numerator = lead(rolling_sum, si_mean)) %>%
+    mutate(denominator = roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA))) %>%
+    mutate(numerator = lead(denominator, si_mean)) %>%
     mutate(numerator = replace(numerator, which(numerator == 0), NA)) %>%
-    mutate(`Simple Ratio.R_mean` = numerator/rolling_sum) %>%
-    mutate(k = numerator) %>%
-    mutate(theta = `Simple Ratio.R_mean`/k) %>%
-    mutate(`Simple Ratio.R_Quantile_025` = qgamma(0.025, shape = k, scale = theta)) %>%
-    mutate(`Simple Ratio.R_Quantile_975` = qgamma(0.975, shape = k, scale = theta)) %>%
-    dplyr::select(date, `Simple Ratio.R_mean`, `Simple Ratio.R_Quantile_025`, `Simple Ratio.R_Quantile_975`)
+    mutate(`Simple Ratio.R_mean` = numerator/denominator)
+  
+  # Confidence Interval
+  pois_tests = map2(df$numerator, df$denominator, function(i,j) poisson.test(x=c(i,j), alternative="two.sided"))
+  pois_tests = tranpose(pois_test) %>% map(unlist)
+    
+  df = df %>% mutate(`Simple Ratio.R_Quantile_025` = pois_tests$`025`) %>%
+              mutate(`Simple Ratio.R_Quantile_975` = pois_tests$`025`) %>%
+  
+  # Select columns to output
+  dplyr::select(date, `Simple Ratio.R_mean`, `Simple Ratio.R_Quantile_025`, `Simple Ratio.R_Quantile_975`)
   
   return(df)
 }
