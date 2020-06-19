@@ -7,6 +7,7 @@
 #    http://shiny.rstudio.com/
 #
 
+library(plotly)
 library(shiny)
 library(tidyverse)
 library(ggpubr)
@@ -15,6 +16,7 @@ library(EpiEstim)
 library(R0)
 library(shinyjs)
 library(shinycssloaders)
+library(grid)
 
 # ****************
 # Load Data
@@ -153,8 +155,8 @@ ui <- fluidPage(
                   checkboxGroupInput(inputId = "R_type", 
                                      label = NULL,
                                      choiceNames = c("Simple Ratio", "Cori et al (2013)", "Wallinga & Teunis (2004)", "Wallinga & Lipsitch (2007)"),
-                                     choiceValues = c("KN", "Cori", "TD", "WL"),
-                                     selected = "KN"),
+                                     choiceValues = c("Simple Ratio", "Cori", "WT", "WL"),
+                                     selected = "Simple Ratio"),
                   
                     tags$b("2. Smoothing Window"),
                     tags$p("We smooth new cases per day with a rolling mean to reduce noise. Select the size of the window for the rolling mean:"),
@@ -187,25 +189,19 @@ ui <- fluidPage(
             # Plots
             # -------------
             column(6,
-                
-                plotOutput("plot_R", height="400px",
-                     hover = hoverOpts(id ="plot_R.hover", delay=40, delayType = "debounce", ),
-                     dblclick = "plot_R.dblclk",
-                     brush = brushOpts(id = "plot_R.brush", resetOnNew = TRUE)
-                ),
-        
-                fluidRow(
+                  
+              plotlyOutput("plot_R", height="400px"),
+                  
+              fluidRow(              
+                    plotOutput("plot_legend", height="50px"),   
                     tags$b("Select data to display on secondary plot"),
                     splitLayout(cellWidths = c("15%", "15%"),
                         actionLink("button_TotalCases", "Total Cases"),
                         actionLink("button_NewCases", "New Cases")
-                    )
-                ),
+                    )),
                 
-                plotOutput("secondary_plot", height="400px", 
-                           hover = hoverOpts(id ="secondary_plot.hover", delay=40, delayType = "debounce"),
-                           dblclick = "secondary_plot.dblclk",
-                           brush = brushOpts(id = "secondary_plot.brush", resetOnNew = TRUE))
+              plotlyOutput("secondary_plot", height="400px")
+              
             ),
             
             column(3, 
@@ -215,10 +211,7 @@ ui <- fluidPage(
                    htmlOutput("Score_Card")
                ),
                
-               fixedRow(
-                   tags$h4("Hover Info:", style="font-size:20px; font-weight:bold"),
-                   verbatimTextOutput("Plot_Info")
-               ),
+               tags$br(),
                
                fixedRow(
                    uiOutput("Last_Update")
@@ -257,6 +250,15 @@ server <- function(input, output, clientData, session) {
       input$var.si_sd,
       input$var.tau)
     },{
+      
+      validate(
+        need(input$geographic_location != "", "Please select a region")
+      )
+      
+      validate(
+        need(input$R_type != "", "Please select a method for estimating R")
+      )
+      
         data <- DATA %>% 
             filter(region %in% input$geographic_location) %>%
             mutate(region = factor(region, levels=c(input$geographic_location)))
@@ -298,7 +300,7 @@ server <- function(input, output, clientData, session) {
             dplyr::select(-estimateR.cori)
         }
         
-        if("TD" %in% input$R_type) {
+        if("WT" %in% input$R_type) {
           data <- data %>% 
             mutate(estimateR.TD = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
             mutate(CD = map2(CD, estimateR.TD, left_join, by="date")) %>%
@@ -313,12 +315,21 @@ server <- function(input, output, clientData, session) {
         }
         
         data = data %>% unnest(CD) %>% ungroup()
-        
+      
         data_holder$data <- data
     })
     
     observeEvent(input$R_type,
       {
+        validate(
+          need(input$geographic_location != "", "Please select a region")
+        )
+        
+        validate(
+          need(input$R_type != "", "Please select a method for estimating R")
+        )
+        
+        
         data = data_holder$data 
 
         #---------------------
@@ -346,7 +357,7 @@ server <- function(input, output, clientData, session) {
                 dplyr::select(-estimateR.cori)
         }
 
-        if("TD" %in% input$R_type & !any(grepl("^TD", colnames(data$CD[[1]])))) {
+        if("WT" %in% input$R_type & !any(grepl("^WT", colnames(data$CD[[1]])))) {
             data <- data %>% 
                 mutate(estimateR.TD = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
                 mutate(CD = map2(CD, estimateR.TD, left_join, by="date")) %>%
@@ -365,25 +376,8 @@ server <- function(input, output, clientData, session) {
         data_holder$data <- data
     })
     
-    # ------------
-    # Render R Estimation Plot
-    # ------------
+    ## Render R Estimation Plot =====================
     
-    # custom function to zoom in plot
-    function_to_zoom <- function(brush, ranges) {
-        
-        # Code from: https://shiny.rstudio.com/gallery/plot-interaction-zoom.html
-        
-        if (!is.null(brush)) {
-            ranges$x <- as.Date(c(brush$xmin, brush$xmax), origin="1970-01-01")
-            ranges$y <- c(brush$ymin, brush$ymax)
-            
-        } else {
-            ranges$x <- as.Date(c(input$dateRange[1], input$dateRange[2]), origin="1970-01-01")
-            ranges$y <- NULL
-        }
-    }
-
     # Cutom ggplot theme
     custom_plot_theme <- function() {
         theme_bw() +
@@ -397,69 +391,68 @@ server <- function(input, output, clientData, session) {
             )
     }
     
-    #Define plot ranges
-    plot_R.ranges <- reactiveValues(x = NULL, y = NULL)
+    plot_R = reactive({
+      
+      validate(
+        need(input$geographic_location != "", "Please select a region")
+      )
+      
+      validate(
+        need(input$R_type != "", "Please select a method for estimating R")
+      )
+         
+      # Initialize Data for Plot
+      data = data_holder$data
+      data = data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
+      data = data %>% dplyr::select(date, region, starts_with(input$R_type))
     
-    observeEvent(input$plot_R.dblclk, {
-        function_to_zoom(input$plot_R.brush, plot_R.ranges)
+      data = data %>% pivot_longer(cols=contains(".R_"), 
+                                   names_to = c("Method", ".value"),
+                                   names_sep=".R_")
+      
+      data = data %>% mutate(region = factor(region, levels=input$geographic_location),
+                             Method = factor(Method, levels=c("Simple Ratio", "Cori", "WT", "WL")))
+      
+      levels(data$Method)[3:4] =c("Walinga & Teunis", "Walinga & Lipsitch")
+     
+      data = data %>% filter(!is.na(mean) & !is.na(Quantile_025) & !is.na(Quantile_975))
+      
+      ymin = min(data$Quantile_025, na.rm=T)
+      ymin = ifelse(ymin < 0.6, ymin*0.8, 0.5)
+      ymax = max(data$Quantile_975, na.rm=T)
+      ymax = ifelse(ymax > (1.5/1.1), ymax*1.1, 1.5)
+      
+      p = ggplot(data = data) +
+          geom_ribbon(aes(x=date, ymin=Quantile_025, ymax=Quantile_975, fill=region, group=interaction(Method, region)), alpha=0.2) +
+          geom_line(aes(x=date, y=mean, color=region, linetype=Method)) +
+          geom_hline(yintercept = 1, linetype = 2) +
+          scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+          ylim(ymin, ymax) + 
+          labs(x="Date", y="Rt Estimate") +
+          custom_plot_theme() +
+          theme(axis.text.x = element_text(angle=45, hjust=1),
+                legend.position = "top",
+                legend.key.size = unit(2, "lines"),
+                legend.text = element_text(size=12))
+      return(p)
     })
     
+    output$plot_R = renderPlotly({ggplotly(plot_R()) %>% hide_legend()})
     
-    plot_R <- reactive({
-        data = data_holder$data 
-        
-        data = data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
-        
-        data = data %>% dplyr::select(date, region, starts_with(input$R_type))
-        
-        # If regions are selected
-        if(nrow(data) < 1) {
-            warning("select geographic location")
-        } else {
-            
-            if(is.null(plot_R.ranges$y[2])) {
-                ymax = data %>% dplyr::select(contains(input$R_type)) %>%
-                    map_dbl(., max, na.rm=T) %>% max(., na.rm=T)
-                ymax = ymax*1.1
-                
-                if (ymax < 1.5) {
-                    ymax = 1.5
-                }
-            } else {
-                ymax = plot_R.ranges$y[2]
-            }
-
-            p = ggplot(data = data) +
-                geom_hline(yintercept = 1, linetype = 2) +
-                #labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
-                scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
-                coord_cartesian(xlim = plot_R.ranges$x, ylim = c(0.5, ymax), expand = FALSE) +
-                custom_plot_theme() +
-                theme(axis.text.x = element_text(angle=45, hjust=1))    
-            
-            for(R_type in input$R_type) {
-                
-                y = paste(R_type, "R_mean", sep=".")
-                ymin = paste(R_type, "R_Quantile_025", sep=".")
-                ymax = paste(R_type, "R_Quantile_975", sep=".")
-                
-                linetypes = c(KN = 1, Cori = 2, TD = 3, WL = 4)
-                l = linetypes[R_type == names(linetypes)]
-
-                p = p +
-                    geom_ribbon(aes_string(x = "date",  ymin=ymin,ymax=ymax, group = "region", fill = "region"), alpha=0.15) +
-                    geom_line(aes_string(x = "date", y = y, color = "region", group = "region"), linetype = l, size =1.25)
-            }
-
-            return(p)
-        }
+    # gg_legend <- function(a.gplot){ 
+    #   # Ref: https://stackoverflow.com/questions/12041042/how-to-plot-just-the-legends-in-ggplot2
+    #   tmp <- ggplot_gtable(ggplot_build(a.gplot)) 
+    #   leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box") 
+    #   legend <- tmp$grobs[[leg]] 
+    #   legend
+    # } 
+    
+    output$plot_legend = renderPlot({
+      plot_legend = get_legend(plot_R())
+      return(as_ggplot(plot_legend))
     })
     
-    output$plot_R = renderPlot({plot_R()})
-    
-    # ------------
-    # Render Total Cases Plot
-    # ------------
+    ## Render Total Cases Plot =========================
     
     # Ref: https://5harad.com/mse125/r/visualization_code.html
     addUnits <- function(n) {
@@ -471,124 +464,111 @@ server <- function(input, output, clientData, session) {
                                        ))))
         return(labels)
     }
-    
+
     plot_TotalCases <- reactive({
-        
+
         data = data_holder$data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
-        
-        data = data %>% split(f = data$INTERPROLATED)
-        
-        #Identify breaks in data
-        ID_breaks_in_data <- function(df) {
-            # from https://stackoverflow.com/questions/14821064/line-break-when-no-data-in-ggplot2
-            idx <- c(1, diff(df$date))
-            i2 <- c(1,which(idx != 1), nrow(df)+1)
-            df$date_grps <- rep(1:length(diff(i2)), diff(i2))
-            return(df)
-        }
-        
-        data = map(data, ID_breaks_in_data) %>% bind_rows()
-        
-        p = ggplot() +
-            geom_line(data = data %>% filter(INTERPROLATED == T), 
-                      aes(x = date, y = total_cases, group = date_grps, color = region), size=1.5, linetype=3) +
-            geom_line(data = data %>% filter(INTERPROLATED == F),
-                      aes(x = date, y = total_cases, group = date_grps, color = region), size=1.5, linetype=1) +
-            labs(y = "Total Cases") + 
-            scale_y_continuous(labels = addUnits, limits = c(0, NA)) + 
+
+        p = ggplot(data) +
+            geom_line(aes(x=date, y=total_cases, color = region), size = 1) + 
+            labs(y = "Total Cases") +
+            scale_y_continuous(labels = addUnits) +
             scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+            labs(x = "Date") +
             custom_plot_theme() +
-            theme(axis.text.x = element_text(angle=45, hjust=1))    
-        
+            theme(axis.text.x = element_text(angle=45, hjust=1))
+
         return(p)
     })
-    
+
     # ------------
     # Render New Cases Plot
     # ------------
-    
+
     plot_NewCases <- reactive({
-        
+
         data = data_holder$data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
-        
+
         p = ggplot(data = data) +
             geom_line(aes(x = date, y = new_cases, group = region, color = region), linetype=2) +
-            geom_line(aes(x = date, y = new_cases_smoothed, group = region, color = region), linetype=1, size=1.5) +
-            labs(y = "New Cases") + 
-            scale_y_continuous(labels = addUnits, limits = c(0, NA)) + 
+            geom_line(aes(x = date, y = new_cases_smoothed, group = region, color = region), linetype=1, size=1) +
+            labs(y = "New Cases") +
+            scale_y_continuous(labels = addUnits, limits = c(0, NA)) +
             scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
+            labs(x = "Date") + 
             custom_plot_theme() +
-            theme(axis.text.x = element_text(angle=45, hjust=1))    
-        
+            theme(axis.text.x = element_text(angle=45, hjust=1))
+
         return(p)
     })
-    
-    
+
+
     #--------------
     # Show Secondary Plot
     #--------------
-    
+
     secondary_plot <- reactiveValues(p = "total_cases")
-    
+
     observeEvent(input$button_TotalCases, {
         secondary_plot$p <- "total_cases"
     })
-    
+
     observeEvent(input$button_NewCases, {
         secondary_plot$p <- "new_cases"
-    })  
-    
-    output$secondary_plot = renderPlot({
-        
+    })
+
+    output$secondary_plot = renderPlotly({
+
         if(secondary_plot$p == "total_cases") {
-            plot_TotalCases()
+            p = ggplotly(plot_TotalCases()) %>% hide_legend()
+            return(p)
         } else {
-            plot_NewCases()
+            ggplotly(plot_NewCases()) %>% hide_legend()
         }
 
     })
-    
+
     # ----------------
     # Render Score Card
     # -----------------
     
     output$Score_Card <- renderUI({
-        
+
         data = data_holder$data
-        
+
         selected_regions = input$geographic_location
         if(is.null(selected_regions)){selected_regions = "World"}
-        
+
         week_start = c(21,14,7)
         score_cards = vector(mode="list", length=length(selected_regions))
 
         for(i in 1:length(selected_regions)) {
             data_subset = data %>% filter(region == selected_regions[i])
-            
+
             score_cards_j = vector(mode="list", length=length(week_start))
-            
+
             for (j in seq_along(week_start)) {
 
                 data_subset.2 = data_subset %>% filter(date >= (Sys.Date() - (week_start[j]+7)) & date < (Sys.Date() - week_start[j]))
                 data_subset.2 = data_subset.2 %>% dplyr::select(starts_with(input$R_type))
-                
+
                 if(nrow(data_subset.2) == 0){
                     next
                 }
-                
+
                 # Get mean lower and upper bounds of R estimates
                 Rmax = data_subset.2 %>%
-                    dplyr::select(contains("R_Quantile_975")) %>% 
+                    dplyr::select(contains("R_Quantile_975")) %>%
                     unlist() %>% mean(na.rm=T) %>% round(2)
-                
+
                 Rmin = data_subset.2 %>%
                     dplyr::select(contains("R_Quantile_025")) %>%
                     unlist() %>% mean(na.rm=T) %>% round(2)
-                
+
                 Rmean = data_subset.2 %>%
                     dplyr::select(contains("R_mean")) %>%
                     unlist() %>% mean(na.rm=T) %>% round(2)
-                 
+
                 if(Rmean < 1 & Rmax <= 1) {
                     color_assingment = "rgb(0,255,0)"
                 } else if (Rmean < 1 & Rmax > 1) {
@@ -598,11 +578,11 @@ server <- function(input, output, clientData, session) {
                 } else if (Rmean >= 1 & Rmin >= 1) {
                     color_assingment = "rgb(255,0,0)"
                 }
-                
+
                 score_card_dates = paste(format(Sys.Date() - (week_start[j]+7), "%b-%d"), "to",format(Sys.Date() - week_start[j], "%b-%d"))
-                
-                score_cards_j[j] = 
-    
+
+                score_cards_j[j] =
+
                     paste("<svg height='100' width='100'>",
                             "<rect width='100' height='100' rx='15' fill='", color_assingment, "' />",
                             "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='30', text-anchor='middle'>Average R Range:</text>",
@@ -611,202 +591,202 @@ server <- function(input, output, clientData, session) {
                             "Sorry, your browser does not support inline SVG.",
                         "</svg>", sep="")
             }
-            
+
             score_cards[i] = paste(score_cards_j, collapse=" ")
             score_cards[i] = paste("<p><b>",input$geographic_location[i],"</b></p>", score_cards[i])
-            
+
          }
-         
+
          score_cards = paste(score_cards, collapse=" ")
          HTML(score_cards)
     })
-    
+
     # ------------------------
     # Render Plot Information
     # ------------------------
     
-    # *************
-    # Hover Info
-    # *************
-    
-    output$Plot_Info <- renderPrint({
-        data = data_holder$data
-        
-        print("Hover mouse over plot for more info")
-        print("Click-and-Drag to select a plot area.")
-        print("Double-click to zoom in and out.")
-        
-        if(any(!(input$geographic_location %in% unique(data$region)))) {
-            regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
-            regions_without_data = paste(regions_without_data, sep=", ")
-            warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
-            print("***********************************")
-            print("*             WARNING             *")
-            print("***********************************")
-            print(warning_annotation)
-        }
-    })
-    
-    observeEvent(input$plot_R.hover, ignoreNULL = F, {
-        
-        data = data_holder$data
-        hover_info = input$plot_R.hover
-        
-        if(!is.null(hover_info)) {
-          
-          # Get date associated with hover location
-          hover.date = as.Date(hover_info$x, origin="1970-01-01")
-          
-          # Mak a vertical line in the other plot
-          output$secondary_plot = renderPlot({
-            if(secondary_plot$p == "total_cases") {
-              plot_TotalCases() + geom_vline(xintercept = hover.date)
-            } else {
-              plot_NewCases() + geom_vline(xintercept = hover.date)
-            }    
-          })
-          
-          # If there is associated data then print in information window
-          if(nrow(data) > 0) {
-            
-            data = data %>% filter(date == as.character(hover.date)) %>%
-              dplyr::select(date, region, contains(input$R_type)) %>%
-              mutate_if(is.numeric, round, digits=2)
-            data = data %>% pivot_longer(-c(1:2), names_to = c("R_type", ".value"), names_sep = "\\.")
-            colnames(data) = gsub("R_", "", colnames(data))
-            colnames(data)[3] = "R Estimation"
-            data = data %>% unite(5:6, col="95% CI", sep="-")    
-            
-            data$`R Estimation` = factor(data$`R Estimation`)
-            
-            data$`R Estimation` = fct_recode(data$`R Estimation`, Simple = "KN", 
-                                             `Cori et al (2013)` = "Cori", 
-                                             `Wallinga & Teunis (2004)` = "TD",
-                                             `Wallinga & Lipsitch (2007)`  = "WT")
-            
-            data = as.data.frame(data)
-            
-            output$Plot_Info <- renderPrint({ 
-              print("Hover mouse over plot for more info")
-              print("Click-and-Drag to select a plot area.")
-              print("Double-click to zoom in and out.")
-              
-              if(any(!(input$geographic_location %in% unique(data$region)))) {
-                regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
-                regions_without_data = paste(regions_without_data, sep=", ")
-                warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
-                print("***********************************")
-                print("*             WARNING             *")
-                print("***********************************")
-                print(warning_annotation)
-              }
-              
-              print("***********************************")
-              print("* INFROMATION FROM MOUSE POSITION *")
-              print("***********************************")
-              
-              print(paste("Date:", data$date[1]))
-              
-              data = split(data, f=data$region)
-              data = map(data, function(x) x %>% dplyr::select(`R Estimation`, mean, `95% CI`))
-              for(i in seq_along(data)) {
-                print(names(data)[i])
-                print(data[[i]])
-              }
-            })
-          }
-        } else { 
-            
-            output$secondary_plot = renderPlot({
-              if(secondary_plot$p == "total_cases") {
-                plot_TotalCases()
-              } else {
-                plot_NewCases()
-              }    
-            })
-            
-            output$Plot_Info <- renderPrint({ 
-                print("Hover mouse over plot for more info")
-                print("Click-and-Drag to select a plot area.")
-                print("Double-click to zoom in and out.")
-                
-                if(any(!(input$geographic_location %in% unique(data$region)))) {
-                    regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
-                    regions_without_data = paste(regions_without_data, sep=", ")
-                    warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
-                    print("***********************************")
-                    print("*             WARNING             *")
-                    print("***********************************")
-                    print(warning_annotation)
-                }
-            })
-        }
-    })
-    
-    observeEvent(input$secondary_plot.hover, ignoreNULL = F, {
-        
-        data = data_holder$data
-        hover_info = input$secondary_plot.hover
-        
-        if(!is.null(hover_info)) {
-          hover.date = as.Date(hover_info$x, origin="1970-01-01")
-          
-          output$plot_R = renderPlot({
-            plot_R() + geom_vline(xintercept = hover.date)
-          })
-          
-          if(nrow(data) > 0) {
-            
-            data = data %>% filter(date == as.character(hover.date)) %>%
-              dplyr::select(region, total_cases, new_cases) %>%
-              mutate_if(is.numeric, round, digits=2)
-            
-            data = as.data.frame(data)
-            
-            output$Plot_Info <- renderPrint({ 
-              print("Hover mouse over plot for more info")
-              print("Click-and-Drag to select a plot area.")
-              print("Double-click to zoom in and out.")
-              
-              if(any(!(input$geographic_location %in% unique(data$region)))) {
-                regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
-                regions_without_data = paste(regions_without_data, sep=", ")
-                warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
-                print("***********************************")
-                print("*             WARNING             *")
-                print("***********************************")
-                print(warning_annotation)
-              }
-              
-              print("***********************************")
-              print("* INFROMATION FROM MOUSE POSITION *")
-              print("***********************************")
-              
-              print(paste("Date:", hover.date))
-              print(data)
-            })
-          }
-        } else {
-          
-            output$plot_R = renderPlot({plot_R()})
-          
-            output$Plot_Info <- renderPrint({ 
-                print("Hover mouse over plot for more info")
-                print("Click-and-Drag to select a plot area.")
-                print("Double-click to zoom in and out.")
-                
-                if(any(!(input$geographic_location %in% unique(data$region)))) {
-                    regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
-                    regions_without_data = paste(regions_without_data, sep=", ")
-                    warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
-                    print("***********************************")
-                    print("*             WARNING             *")
-                    print("***********************************")
-                    print(warning_annotation)
-                }
-            })
-        }
-    })
+    # # *************
+    # # Hover Info
+    # # *************
+    # 
+    # output$Plot_Info <- renderPrint({
+    #     data = data_holder$data
+    #     
+    #     print("Hover mouse over plot for more info")
+    #     print("Click-and-Drag to select a plot area.")
+    #     print("Double-click to zoom in and out.")
+    #     
+    #     if(any(!(input$geographic_location %in% unique(data$region)))) {
+    #         regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+    #         regions_without_data = paste(regions_without_data, sep=", ")
+    #         warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+    #         print("***********************************")
+    #         print("*             WARNING             *")
+    #         print("***********************************")
+    #         print(warning_annotation)
+    #     }
+    # })
+    # 
+    # observeEvent(input$plot_R.hover, ignoreNULL = F, {
+    #     
+    #     data = data_holder$data
+    #     hover_info = input$plot_R.hover
+    #     
+    #     if(!is.null(hover_info)) {
+    #       
+    #       # Get date associated with hover location
+    #       hover.date = as.Date(hover_info$x, origin="1970-01-01")
+    #       
+    #       # Mak a vertical line in the other plot
+    #       output$secondary_plot = renderPlot({
+    #         if(secondary_plot$p == "total_cases") {
+    #           plot_TotalCases() + geom_vline(xintercept = hover.date)
+    #         } else {
+    #           plot_NewCases() + geom_vline(xintercept = hover.date)
+    #         }    
+    #       })
+    #       
+    #       # If there is associated data then print in information window
+    #       if(nrow(data) > 0) {
+    #         
+    #         data = data %>% filter(date == as.character(hover.date)) %>%
+    #           dplyr::select(date, region, contains(input$R_type)) %>%
+    #           mutate_if(is.numeric, round, digits=2)
+    #         data = data %>% pivot_longer(-c(1:2), names_to = c("R_type", ".value"), names_sep = "\\.")
+    #         colnames(data) = gsub("R_", "", colnames(data))
+    #         colnames(data)[3] = "R Estimation"
+    #         data = data %>% unite(5:6, col="95% CI", sep="-")    
+    #         
+    #         data$`R Estimation` = factor(data$`R Estimation`)
+    #         
+    #         data$`R Estimation` = fct_recode(data$`R Estimation`, Simple = "KN", 
+    #                                          `Cori et al (2013)` = "Cori", 
+    #                                          `Wallinga & Teunis (2004)` = "TD",
+    #                                          `Wallinga & Lipsitch (2007)`  = "WT")
+    #         
+    #         data = as.data.frame(data)
+    #         
+    #         output$Plot_Info <- renderPrint({ 
+    #           print("Hover mouse over plot for more info")
+    #           print("Click-and-Drag to select a plot area.")
+    #           print("Double-click to zoom in and out.")
+    #           
+    #           if(any(!(input$geographic_location %in% unique(data$region)))) {
+    #             regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+    #             regions_without_data = paste(regions_without_data, sep=", ")
+    #             warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+    #             print("***********************************")
+    #             print("*             WARNING             *")
+    #             print("***********************************")
+    #             print(warning_annotation)
+    #           }
+    #           
+    #           print("***********************************")
+    #           print("* INFROMATION FROM MOUSE POSITION *")
+    #           print("***********************************")
+    #           
+    #           print(paste("Date:", data$date[1]))
+    #           
+    #           data = split(data, f=data$region)
+    #           data = map(data, function(x) x %>% dplyr::select(`R Estimation`, mean, `95% CI`))
+    #           for(i in seq_along(data)) {
+    #             print(names(data)[i])
+    #             print(data[[i]])
+    #           }
+    #         })
+    #       }
+    #     } else { 
+    #         
+    #         output$secondary_plot = renderPlot({
+    #           if(secondary_plot$p == "total_cases") {
+    #             plot_TotalCases()
+    #           } else {
+    #             plot_NewCases()
+    #           }    
+    #         })
+    #         
+    #         output$Plot_Info <- renderPrint({ 
+    #             print("Hover mouse over plot for more info")
+    #             print("Click-and-Drag to select a plot area.")
+    #             print("Double-click to zoom in and out.")
+    #             
+    #             if(any(!(input$geographic_location %in% unique(data$region)))) {
+    #                 regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+    #                 regions_without_data = paste(regions_without_data, sep=", ")
+    #                 warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+    #                 print("***********************************")
+    #                 print("*             WARNING             *")
+    #                 print("***********************************")
+    #                 print(warning_annotation)
+    #             }
+    #         })
+    #     }
+    # })
+    # 
+    # observeEvent(input$secondary_plot.hover, ignoreNULL = F, {
+    #     
+    #     data = data_holder$data
+    #     hover_info = input$secondary_plot.hover
+    #     
+    #     if(!is.null(hover_info)) {
+    #       hover.date = as.Date(hover_info$x, origin="1970-01-01")
+    #       
+    #       output$plot_R = renderPlot({
+    #         plot_R() + geom_vline(xintercept = hover.date)
+    #       })
+    #       
+    #       if(nrow(data) > 0) {
+    #         
+    #         data = data %>% filter(date == as.character(hover.date)) %>%
+    #           dplyr::select(region, total_cases, new_cases) %>%
+    #           mutate_if(is.numeric, round, digits=2)
+    #         
+    #         data = as.data.frame(data)
+    #         
+    #         output$Plot_Info <- renderPrint({ 
+    #           print("Hover mouse over plot for more info")
+    #           print("Click-and-Drag to select a plot area.")
+    #           print("Double-click to zoom in and out.")
+    #           
+    #           if(any(!(input$geographic_location %in% unique(data$region)))) {
+    #             regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+    #             regions_without_data = paste(regions_without_data, sep=", ")
+    #             warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+    #             print("***********************************")
+    #             print("*             WARNING             *")
+    #             print("***********************************")
+    #             print(warning_annotation)
+    #           }
+    #           
+    #           print("***********************************")
+    #           print("* INFROMATION FROM MOUSE POSITION *")
+    #           print("***********************************")
+    #           
+    #           print(paste("Date:", hover.date))
+    #           print(data)
+    #         })
+    #       }
+    #     } else {
+    #       
+    #         output$plot_R = renderPlot({plot_R()})
+    #       
+    #         output$Plot_Info <- renderPrint({ 
+    #             print("Hover mouse over plot for more info")
+    #             print("Click-and-Drag to select a plot area.")
+    #             print("Double-click to zoom in and out.")
+    #             
+    #             if(any(!(input$geographic_location %in% unique(data$region)))) {
+    #                 regions_without_data = input$geographic_location[!(input$geographic_location %in% unique(data$region))]
+    #                 regions_without_data = paste(regions_without_data, sep=", ")
+    #                 warning_annotation = paste("WARNING: The following selected region(s) do not have enough data:", regions_without_data)
+    #                 print("***********************************")
+    #                 print("*             WARNING             *")
+    #                 print("***********************************")
+    #                 print(warning_annotation)
+    #             }
+    #         })
+    #     }
+    # })
     
     #-----------
     # Code Page
