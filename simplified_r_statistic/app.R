@@ -185,7 +185,7 @@ ui <- fluidPage(
                ## ** Score Cards ============================
                fixedRow(
                    tags$h4("Weekly Report Card:", style="font-size:20px; font-weight:bold"),
-                   HTML("<p> For each week displayed, 
+                   HTML("<p> Below is a weekly report for the last 3 weeks of data available. For each week displayed, 
                         <span style='font-weight: bold; background-color: limegreen'>green</span> 
                         indicates that on average the upper bound of the Rt was below 1. 
                         <span style='font-weight: bold; background-color: yellow'>Yellow</span> 
@@ -588,17 +588,20 @@ server <- function(input, output, clientData, session) {
         selected_regions = input$geographic_location
         if(is.null(selected_regions)){selected_regions = "World"}
 
-        week_start = c(21,14,7)
+        week_start = c(14,7,0)
         score_cards = vector(mode="list", length=length(selected_regions))
 
         for(i in 1:length(selected_regions)) {
             data_subset = data %>% filter(region == selected_regions[i])
 
             score_cards_j = vector(mode="list", length=length(week_start))
-
+            
             for (j in seq_along(week_start)) {
-
-                data_subset.2 = data_subset %>% filter(date >= (Sys.Date() - (week_start[j]+7)) & date < (Sys.Date() - week_start[j]))
+                
+                start_date = max(data_subset$date) - (week_start[j]+7)
+                end_date = max(data_subset$date) - week_start[j]
+                
+                data_subset.2 = data_subset %>% filter(date >= start_date & date < end_date)
                 data_subset.2 = data_subset.2 %>% filter(Method %in% input$R_type)
 
                 if(nrow(data_subset.2) == 0){
@@ -619,15 +622,30 @@ server <- function(input, output, clientData, session) {
                 } else if (Rmean >= 1 & Rmin >= 1) {
                     color_assingment = "rgb(255,0,0)"
                 }
-
-                score_card_dates = paste(format(Sys.Date() - (week_start[j]+7), "%b-%d"), "to",format(Sys.Date() - week_start[j], "%b-%d"))
-                score_card_weeks = c("Three Weeks Ago", "Two Week Ago", "This Past Week")[j]
+                
+                # Dates to put on score cards
+                score_card_dates = paste(format(start_date, "%b-%d"), "to",format(end_date, "%b-%d"))
+                
+                # Title to put on score cards
+                relative_start_date = as.numeric(Sys.Date() - start_date)/7
+                relative_end_date = as.numeric(Sys.Date() - end_date)/7
+                relative_week = (relative_start_date + relative_end_date)/2
+                
+                print(list(start_date, end_date, relative_start_date, relative_end_date, relative_week))
+                
+                if(relative_week < 1) {
+                  score_card_week = "This Past Week"
+                } else if (relative_week < 2 & relative_week >= 1) {
+                  score_card_week = "Last Week"
+                } else if (relative_week >= 2) {
+                  score_card_week = paste(floor(relative_week), "Weeks Ago")
+                }
                 
                 score_cards_j[j] =
 
                     paste("<svg height='100' width='100'>",
                             "<rect width='100' height='100' rx='15' fill='", color_assingment, "' />",
-                            "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='20', text-anchor='middle'>",score_card_weeks,"</text>",
+                            "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='20', text-anchor='middle'>",score_card_week,"</text>",
                             "<text fill='#000000' font-size='8' font-family='Verdana' x='50%' y='40', text-anchor='middle'>",score_card_dates,"</text>",
                             "<text fill='#000000' font-size='10' font-family='Verdana' x='50%' y='60', text-anchor='middle'>Average R Range:</text>",
                             "<text fill='#000000' font-size='10' font-family='Verdana' font-weight='bold' x='50%' y='80', text-anchor='middle'> ",Rmin,"-", Rmax, "</text>",
