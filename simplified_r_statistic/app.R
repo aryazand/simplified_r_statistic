@@ -367,11 +367,6 @@ server <- function(input, output, clientData, session) {
                                    names_to = c("Method", ".value"),
                                    names_sep=".R_")
       
-      data = data %>% mutate(region = factor(region, levels=input$geographic_location),
-                             Method = factor(Method, levels=c("Simple Ratio", "Cori", "WT", "WL")))
-      
-      levels(data$Method)[3:4] =c("Walinga & Teunis", "Walinga & Lipsitch")
-      
       data_holder$data2 = data     
     }, ignoreInit = T)
     
@@ -403,7 +398,10 @@ server <- function(input, output, clientData, session) {
       # Initialize Data for Plot
       data = data_holder$data2
       data = data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
-      data$region = factor(data$region, levels=input$geographic_location)
+      data = data %>% filter(Method %in% input$R_type)
+      data = data %>% mutate(region = factor(region, levels=input$geographic_location))
+      data$Method = data$Method %>% fct_recode(`Walinga & Teunis` = "WT", 
+                                               `Walinga & Lipsitch` = "WL")
       
       ymin = min(data$Quantile_025, na.rm=T)
       ymin = ifelse(ymin < 0.6, ymin*0.8, 0.5)
@@ -429,7 +427,15 @@ server <- function(input, output, clientData, session) {
     
     output$hover_info_1 <- renderUI({
       hover <- input$plot_hover_1
-      point <- nearPoints(data_holder$data2, hover, threshold = 20, maxpoints = 1, yvar="mean", addDist = TRUE)
+      
+      # Initialize Data
+      data = data_holder$data2
+      data = data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
+      data = data %>% filter(Method %in% input$R_type)
+      data$Method = data$Method %>% fct_recode(`Walinga & Teunis` = "WT", 
+                                               `Walinga & Lipsitch` = "WL")
+      
+      point <- nearPoints(data, hover, threshold = 20, maxpoints = 1, yvar="mean", addDist = TRUE)
       if (nrow(point) == 0) return(NULL)
       
       # calculate point position INSIDE the image as percent of total dimensions
