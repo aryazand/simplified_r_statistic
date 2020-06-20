@@ -16,6 +16,9 @@ smooth_new_cases <- function(data, smoothing_window) {
   # replace NAs in new_cases_smoothed with value from new_cases
   data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
   
+  # round the smoothed new cases to whole numbers
+  data$new_cases_smoothed= round(data$new_cases_smoothed)
+  
   # Remove smoothed new cases that result in NAs or leading 0s
   data = data %>% filter(!is.na(new_cases_smoothed)) %>% 
     group_by(region, region_type, regionID, regionID_type) %>%
@@ -35,7 +38,7 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
     
   # Basic Ratio
   df = df %>%
-    mutate(denominator = round(roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA)))) %>%
+    mutate(denominator = roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA))) %>%
     mutate(numerator = lead(denominator, si_mean)) %>%
     mutate(numerator = replace(numerator, which(numerator == 0), NA)) %>%
     mutate(denominator = replace(denominator, which(denominator == 0), NA)) %>%
@@ -44,7 +47,7 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
   # remove any ratios involving 0 new_cases in denominator or numerator
   df_2 = df %>% filter(!is.na(`Simple Ratio.R_mean`))
   
-  # Confidence Interval
+  # Confidence Interval. Compared by binomial test 
   pois_tests = map2(df_2$numerator, df_2$denominator, function(i,j) poisson.test(x=c(i,j), alternative="two.sided"))
   pois_tests = transpose(pois_tests) %>% .$conf.int %>% unlist() %>% matrix(ncol=2, byrow=T)
     
@@ -58,6 +61,9 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
   
   return(df)
 }
+
+# Possible Improvements:
+# 1. Use binomial.test directly rather than using poisson test 
 
 ## ---- Cori-R-Estimate----
 library("EpiEstim")
