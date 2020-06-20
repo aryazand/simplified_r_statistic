@@ -97,11 +97,14 @@ ui <- fluidPage(
                                     start = max(DATA$date) - 56,
                                     end = max(DATA$date))
               )),
+              
+              ## * Main Description ============================
+              
               column(4, 
-                tags$span("This app allows you to view the instataneous reproduction rate (Rt) of SARS-CoV-2 virus over time in
-                          all countries, US States, and US Counties using 4 different methods. The Rt value are displayed with upper 
-                          and lower bounds of estimates. More information on how to use and interpret the app can be found in 
-                          the Inroduction page.")      
+                tags$span("This app allows you to view the instataneous reproduction rate (Rt) of SARS-CoV-2 virus in any country, 
+                          US State, and US County.The Rt in the average number of people who will be infected by an individual 
+                          who has the virus. This number is determined by both biological characteristics of the virus as well as human 
+                          behavior, therefore it changes over time. For the pandemic to end, we must see the Rt value stay below 1.")
               )
               
             ),
@@ -112,7 +115,7 @@ ui <- fluidPage(
             column(3,
         
                 wellPanel(
-                  tags$p("Controls:", style="font-size:20px; font-weight:bold"),
+                  tags$p("Control How Rt is Estimated:", style="font-size:20px; font-weight:bold"),
                   tags$b("1. Select method for estimating Rt"),
                   tags$p("Intro page explains each method", style="margin-bottom:1.5em"),
                   checkboxGroupInput(inputId = "R_type", 
@@ -169,7 +172,7 @@ ui <- fluidPage(
               div( 
                 style = "position:relative",
                 plotOutput("secondary_plot", height="400px", 
-                           hover = hoverOpts("plot_hover_2", delay = 100, delayType = "debounce")),
+                           hover = hoverOpts("plot_hover_2", delay = 100, delayType = "debounce")) %>% withSpinner(color="#0dc5c1"),
                 uiOutput("hover_info_2")
               ),
               
@@ -212,8 +215,8 @@ ui <- fluidPage(
         tabPanel("Methods", fluid = TRUE,
                  tags$head(tags$style(HTML(".node:hover polygon {fill: red;} .node {cursor:pointer}"))),
                  useShinyjs(),
-                 column(6, uiOutput('flow_chart') %>% withSpinner(color="#0dc5c1")),
-                 column(6, uiOutput("md_file", style = "overflow-y:scroll; max-height: 600px") %>% withSpinner(color="#0dc5c1"))
+                 fixedRow(uiOutput('flow_chart') %>% withSpinner(color="#0dc5c1")),
+                 fixedRow(uiOutput("md_file", style = "overflow-y:scroll; max-height: 600px") %>% withSpinner(color="#0dc5c1"))
         ), 
         tabPanel("About", fluid = TRUE, includeMarkdown("About.md"))
     )
@@ -400,8 +403,10 @@ server <- function(input, output, clientData, session) {
       data = data %>% filter(date >= input$dateRange[1] & date <= input$dateRange[2])
       data = data %>% filter(Method %in% input$R_type)
       data = data %>% mutate(region = factor(region, levels=input$geographic_location))
+      
       data$Method = data$Method %>% fct_recode(`Walinga & Teunis` = "WT", 
                                                `Walinga & Lipsitch` = "WL")
+
       
       ymin = min(data$Quantile_025, na.rm=T)
       ymin = ifelse(ymin < 0.6, ymin*0.8, 0.5)
@@ -410,7 +415,7 @@ server <- function(input, output, clientData, session) {
       
       p = ggplot(data = data) +
           geom_ribbon(aes(x=date, ymin=Quantile_025, ymax=Quantile_975, fill=region, group=interaction(Method, region)), alpha=0.2) +
-          geom_line(aes(x=date, y=mean, color=region, linetype=Method)) +
+          geom_line(aes(x=date, y=mean, color=region, linetype=Method), size=1) +
           geom_hline(yintercept = 1, linetype = 2) +
           scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
           ylim(ymin, ymax) + 
@@ -630,8 +635,6 @@ server <- function(input, output, clientData, session) {
                 relative_start_date = as.numeric(Sys.Date() - start_date)/7
                 relative_end_date = as.numeric(Sys.Date() - end_date)/7
                 relative_week = (relative_start_date + relative_end_date)/2
-                
-                print(list(start_date, end_date, relative_start_date, relative_end_date, relative_week))
                 
                 if(relative_week < 1) {
                   score_card_week = "This Past Week"
