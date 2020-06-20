@@ -7,27 +7,28 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Click on a node on the flow chart, and go to the relevant part of the code on the right
+## Schematic of Data Processing
+Click on a node in the schematic to be taken to relevant part of the code below
 
-```{r echo=F, message=F, warning=F}
+```{r echo=F, message=F, warning=F, fig.width=10, fig.height=4}
 library("DiagrammeR")
 
 grViz("
   digraph a_nice_graph {
   
     # a 'graph' statement
-    graph [compound = true, nodesep = .5, ranksep = .25, color = crimson, fontsize = 10]
+    graph [compound = true, nodesep = .5, ranksep = .25, color = crimson]
     
-    node [shape = box, fontname = Helvetica]
+    node [shape = box, fontname = Helvetica, fontsize = 40]
     '@@1'; '@@2'; '@@3'; '@@4'; '@@5'; '@@6'; 
     '@@7'; '@@8'; '@@9'; '@@10'; '@@11'; '@@12';
     '@@14'; '@@15'; '@@16'; '@@19';
     
     # several 'node' statements
-    node [shape = plaintext, fontname = Helvetica]
+    node [shape = plaintext, fontname = Helvetica, fontsize = 40]
     '@@13';
     
-    node [shape = oval, fontname = Helvetica, x = 100]
+    node [shape = oval, fontname = Helvetica, x = 100, fontsize = 40]
     '@@17', '@@18';
     
     # edge definitions with the node IDs
@@ -39,7 +40,7 @@ grViz("
     
     subgraph cluster0 {
       label = 'Clean Data';
-      fontsize = 10;
+      fontsize = 40;
       '@@8' -> '@@9' -> '@@10';
     }
     
