@@ -9,8 +9,7 @@ smooth_new_cases <- function(data, smoothing_window) {
   #smoothing_window hold the user input on the size of the smoothing window
   data = data %>%
     group_by(region, region_type, regionID, regionID_type) %>%
-    mutate(new_cases_smoothed = roll_mean(new_cases, n = smoothing_window, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
-    mutate(new_cases_smoothed = replace(new_cases_smoothed, is.na(new_cases_smoothed), new_cases[is.na(new_cases_smoothed)])) %>%
+    mutate(new_cases_smoothed = roll_mean(x=new_cases, n = smoothing_window, align="center", fill = c(NA, NA, NA), na.rm=T)) %>%
     ungroup()
   
   # replace NAs in new_cases_smoothed with value from new_cases
@@ -47,12 +46,13 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
   # remove any ratios involving 0 new_cases in denominator or numerator
   df_2 = df %>% filter(!is.na(`Simple Ratio.R_mean`))
   
-  # Confidence Interval. Compared by binomial test 
-  pois_tests = map2(df_2$numerator, df_2$denominator, function(i,j) poisson.test(x=c(i,j), alternative="two.sided"))
-  pois_tests = transpose(pois_tests) %>% .$conf.int %>% unlist() %>% matrix(ncol=2, byrow=T)
+  # Confidence Interval. Compared by binomial test
+  CIs = map2(df_2$numerator, df_2$denominator, function(i,j) binom.test(c(i,j), sum(i,j), p=0.5, alternative="two.sided"))
+  CIs = transpose(CIs) %>% .$conf.int %>% unlist() %>% matrix(ncol=2, byrow=T)
+  CIs = CIs/(1-CIs)
     
-  df_2 = df_2 %>% mutate(`Simple Ratio.R_Quantile_025` = pois_tests[,1], 
-                         `Simple Ratio.R_Quantile_975` = pois_tests[,2])
+  df_2 = df_2 %>% mutate(`Simple Ratio.R_Quantile_025` = CIs[,1], 
+                         `Simple Ratio.R_Quantile_975` = CIs[,2])
   
   df = left_join(df, df_2, by=colnames(df)[colnames(df) %in% colnames(df_2)])
   
@@ -61,9 +61,6 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
   
   return(df)
 }
-
-# Possible Improvements:
-# 1. Use binomial.test directly rather than using poisson test 
 
 ## ---- Cori-R-Estimate----
 library("EpiEstim")
