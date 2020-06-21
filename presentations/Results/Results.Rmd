@@ -35,30 +35,18 @@ We developed a Shiny web-app that allows users to estimate $R_t$ for the SARS-Co
 
 **Table 1. Methods for Estimating $R_t$**. 
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Method                           Description                                                                               Equation                                            Reference                                    
--------------------------------- ----------------------------------------------------------------------------------------- --------------------------------------------------- ---------------------------------------------
-**Ratio Model**                  $R_t$ is the sum of new cases ($I$) within a time window (size $\tau$) centered on day    $R_t = \frac{\sum_{i = t - \frac{\tau}{2} + D}^{t                                                
-                                 $t + D$ divided by the sum of new cases on a time window centered on day $t$, where $D$   + \frac{\tau}{2} + D}I_i}{\sum_{i = t -                                                          
-                                 is the mean generation interval.                                                          \frac{\tau}{2}}^{t + \frac{\tau}{2}}I_i}$                                                        
+```{r echo=F}
+library("kableExtra")
+library("tidyverse")
+df = read_csv("table_1 - Description of Rt Estimation Methods.csv")
+kable(df, "latex", align="l", booktabs=TRUE, escape = F) %>%
+  kable_styling(full_width = F)%>%
+  column_spec(1, width = "8em", bold = T, color = "black")%>%
+  column_spec(2, width = "20em") %>%
+  column_spec(3, width = "8em") %>%
+  column_spec(4, width = "8em")
+```
 
-**Infectiousness Model**         $R_t$ is calculated as the number of new cases ($I$) within a time window (size $\tau$)   $R_t = \frac{\sum_{i = t                            Modified from Cori et al, 2013               
-                                 centered on day $t$ divided by the sum of infectiousness of all individual infected       -\frac{\tau}{2}}^{t+\frac{\tau}{2}}I_i}{\sum_{i =                                                
-                                 prior to the time window, where infectiousness is defined by the probability              0}^{t -\frac{\tau}{2}}I_i*w(i)}$                                                                 
-                                 distribution of the generation interval                                                                                                                                                    
-
-**Transmission Network Model**   For this method, all transmission networks compatible with the observed number of new     $p_{i,j} = \frac{w(t_i - t_j)}{\sum_{i \neq         Wallinga & Teunis, 2004; Obadia et al, 2012  
-                                 cases per day are considered and a pre-defined distribution of generational intervals     k}{w(t_i - t_k)}}$ <br> $R_j = \sum_{i} p_{i,j}$                                                 
-                                 ($w(t)$). The likelihood that a new case $i$ was infected by existing case $j$ is the     <br> $R_t = \bar{R_j}$                                                                           
-                                 probability of a generation interval equal to the time difference between $i$ and $j$                                                                                                      
-                                 ($w(t_i - t_j)$). The relative likelihood of $i$ being infected by $j$ ($p_{ij}$) is                                                                                                       
-                                 $w(t_i - t_j)$ normalized to the likelihood of case $i$ having been infected by all                                                                                                        
-                                 other cases $k$. The likely number of cases produced by $j$ ($R_j$), is the sum of                                                                                                         
-                                 $p_{i,j}$ for all new cases $i$. Thus, $R_t$ is is the average of all $R_j$.                                                                                                               
-
-**Exponential Growth Method**    $R_t$ is derived from rate exponential growth ($r$) observed within a time window (size   $R_t = \frac{1}{\int_{t = 0}^{\infty}               Modified from Wallinga & Lipsitch (2007)     
-                                 $\tau$) centered on day $t$                                                               e^{-rt}w(t)dt}$                                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 The user is able to select one or more geographic regions, and view a graph of how the $R_t$ changes over time for each of those regions. The user can modify parameters associated with the $R_t$ calculation, such as specifying the size of the smoothing window (the number days used for a rolling mean) to smooth the number of new cases per day, the mean and standard deviation of the generation interval, and the number of days to consider when calculating $R_t$ for each day. Additionally, the user can view the cumulative number of cases and new cases per day for each region selected. 
 
