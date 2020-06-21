@@ -8,6 +8,7 @@ output:
 header-includes:
 - \usepackage{caption}
 - \captionsetup[figure]{labelformat=empty}
+bibliography: "references.bib"
 ---
 
 
