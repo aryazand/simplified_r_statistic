@@ -6,8 +6,8 @@
 simplified_r_statistic/rsconnect/*
 presentations/**/*.pdf
 presentations/**/*.html
-!presentations/Results/table_1 - Description of Rt Estimation Methods.csv
-presentations/**/
+presentations/**/*.csv
+!presentations/Results/table_1\ -\ Description of Rt Estimation Methods.csv
 presentations/**/*.tex
 presentations/Results/Figure_1.png
 simplified_r_statistic/case_data.csv
