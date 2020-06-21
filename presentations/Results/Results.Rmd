@@ -30,17 +30,15 @@ $$ R_t \approx \frac{\sum_{t - \frac{\tau}{2} + D}^{t + \frac{\tau}{2} + D}I_i}{
 Since it is nearly impossible for any public health programs to identify all new cases of infection each day, the reported new cases represent only a subset of the total cases. For estimation $R_t$ to be accurate, it depends on how this subset is selected in a few ways. First, the porportion of the total represented by this subset cannot change drastically between the two reporting periods (e.g. if the porportion of the population that is tested drastically increases between the two reporting periods, then $R_t$ will appear artificially inflated). Second, the demographics that influence susceptibility to the disease (or testing positive) of the people reported cannot change drastically between the reporting periods (e.g. only testing the elderly in one time period, and then switching to testing non-elderly will likely affect $R_t$ estimations). Third, ultimately the change in cases of the subset needs to reflect the rate of change of the entire population (e.g. if...)
 --->
 
-## The $R_t$ Estimator Web App
+## Performance of the Simple Ratio estimation of $R_t$
 
-We developed a Shiny web-app that allows users to estimate $R_t$ for the SARS-CoV-2 pandemic in all countries, all states in the United States,, and all counties in the United States over time with 95% confidence intervals (or credible intervals) for the estimations. The user can estimate R using 4 different methods, all based on new cases per day and the generation interval (Table 1.) 
-
-**Table 1. Methods for Estimating $R_t$**. 
+To assess the performance of this simple ratio method of estimating $R_t$, we compared it to three previously published methods of estimating $R_t$ (**Table 1**). We calculated the absolute difference in daily $R_t$ esimations between the four methods for the current SARS-CoV-2 pandemic in 10 countries, 10 US states, and 10 US counties (identified in the **Methods** section).  
 
 ```{r echo=F}
 library("kableExtra")
 library("tidyverse")
 df = read_csv("table_1 - Description of Rt Estimation Methods.csv")
-kable(df, "latex", align="l", booktabs=TRUE, escape = F) %>%
+kable(df, "latex", align="l", booktabs=TRUE, escape = F, caption = "Table 1. Methods for Estimating $R_t$") %>%
   kable_styling(full_width = F)%>%
   column_spec(1, width = "8em", bold = T, color = "black")%>%
   column_spec(2, width = "20em") %>%
@@ -48,6 +46,29 @@ kable(df, "latex", align="l", booktabs=TRUE, escape = F) %>%
   column_spec(4, width = "8em")
 ```
 
+```{r echo=F, message = F, warning = F}
+
+df= read_csv("DATA - baseline_parameters.csv")
+
+df = df %>%  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", "Simple Ratio vs Wallinga & Tuenis", "Simple Ratio vs Wallinga & Lipsitch", "Cori vs Wallinga & Teunis", "Cori vs Wallinga & Lipsitch", "Walinga & Teunis vs Wallinga & Lipsitch")))
+
+
+```
+
+Using baseline parameters (generation interval with mean 4 days and standard deviation of 3 days and \tau of size 7 days, based on results from [@ganyaniEstimatingGenerationInterval2020; @nishiuraCorrectingActualReproduction2010]), we find that the simple ratio method agrees well with the 3 other methods (**Figure 1**). The median error 
+
+
+
+> **Box 1. Summary of comparison** <br>
+> The 4 different methods result in very similar estimates of $R_t$. In particular when: <br>
+> 1. Smoothing window is increased <br>
+> 2. The number of days for assessing the time-period <br>
+> 3. When the mean and standard deviation of generation interval are low <br>
+
+
+## The $R_t$ Estimator Web App
+
+We developed a Shiny web-app that allows users to estimate $R_t$ for the SARS-CoV-2 pandemic in all countries, all states in the United States,, and all counties in the United States over time with 95% confidence intervals (or credible intervals) for the estimations. The user can estimate R using 4 different methods, all based on new cases per day and the generation interval (Table 1.) 
 
 The user is able to select one or more geographic regions, and view a graph of how the $R_t$ changes over time for each of those regions. The user can modify parameters associated with the $R_t$ calculation, such as specifying the size of the smoothing window (the number days used for a rolling mean) to smooth the number of new cases per day, the mean and standard deviation of the generation interval, and the number of days to consider when calculating $R_t$ for each day. Additionally, the user can view the cumulative number of cases and new cases per day for each region selected. 
 
@@ -63,13 +84,6 @@ For each geographic region select, the web-app summarizes the the last 3 weeks o
 library("tidyverse")
 library("RcppRoll")
 ```
-
-> **Box 1. Summary of comparison** <br>
-> Using the data for US States, the 4 different methods result in very similar estimates of $R_t$. In particular when: <br>
-> 1. Smoothing window is increased <br>
-> 2. The number of days for assessing the time-period <br>
-> 3. When the mean and standard deviation of generation interval are low <br>
-
 
 ```{r echo=F, message = F, warning = F}
 
