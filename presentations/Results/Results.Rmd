@@ -12,8 +12,22 @@ header-includes:
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = F, 
+                      warning = F)
 ```
+
+## A Simple Ratio for Estimating $R_t$
+
+If we assume that majority of secondary infection caused by a primary case occur at the mean generation interval of the infection ($D$), then the $R_t$ on day $t$ can be estimated as the ratio of the number of new cases ($I$) on day $t+D$ and day $t$.
+
+$$R_t \approx \frac{I_{t+D}}{I_t}$$
+
+However, reporting of new cases easily violates the assumption that the majority of secondary infections occur $D$ days afte the primary infection for two reasons. First, the actual transmission of the virus doesn't conform to a rigid schedule. Two, there is inevitable variance in the timing of when new cases are reported (e.g. new cases are typically reported less over weekends). We can handle these two violations of the assumption by estimating $R_t$ as the ratio of the sums of new cases within two time periods ( size $\tau$ days, with the center of the time periods being on days $t$ and $t+D$). By considering the sum of new cases within larger time periods (e.g. 7 days), we capture secondary infections that didn't occur exactly $D$ days from the primary infection and we also counteract variation in new case reporting. 
+
+$$ R_t \approx \frac{\sum_{t - \frac{\tau}{2} + D}^{t + \frac{\tau}{2} + D}I_i}{\sum_{t - \frac{\tau}{2}}^{t + \frac{\tau}{2}}I_i}$$
+---
+Since it is nearly impossible for any public health programs to identify all new cases of infection each day, the reported new cases represent only a subset of the total cases. For estimation $R_t$ to be accurate, it depends on how this subset is selected in a few ways. First, the porportion of the total represented by this subset cannot change drastically between the two reporting periods (e.g. if the porportion of the population that is tested drastically increases between the two reporting periods, then $R_t$ will appear artificially inflated). Second, the demographics that influence susceptibility to the disease (or testing positive) of the people reported cannot change drastically between the reporting periods (e.g. only testing the elderly in one time period, and then switching to testing non-elderly will likely affect $R_t$ estimations). Third, ultimately the change in cases of the subset needs to reflect the rate of change of the entire population (e.g. if...)
+---
 
 ## The $R_t$ Estimator Web App
 
