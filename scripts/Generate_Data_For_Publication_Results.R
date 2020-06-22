@@ -53,10 +53,6 @@ data = bind_rows(data_1, data_2, data_3)
 # Load Functions
 #------------
 
-RMSE_func <- function(v, v_ref) {
-  RMSE = sqrt((v_ref - v)^2)
-}
-
 EstimateR.WL_safe = safely(EstimateR.WL)
 EstimateR.cori_safe = safely(EstimateR.cori)
 EstimateR.WT_safe = safely(EstimateR.WT)
@@ -95,27 +91,7 @@ R_estimations <- function(data, var_D, var_D_sd, var_tau, smoothing_window) {
     dplyr::select(-R_estimate)
   
   data = data %>% unnest(CD) %>% ungroup()
-  
-  data = data %>%
-    mutate(RMSE.KN_Cori = RMSE_func(KN.R_mean, Cori.R_mean)) %>%
-    mutate(RMSE.KN_WT = RMSE_func(KN.R_mean, TD.R_mean)) %>%
-    mutate(RMSE.KN_WL = RMSE_func(KN.R_mean, WL.R_mean)) %>%
-    mutate(RMSE.Cori_WT = RMSE_func(Cori.R_mean, TD.R_mean)) %>%
-    mutate(RMSE.Cori_WL = RMSE_func(Cori.R_mean, WL.R_mean)) %>%
-    mutate(RMSE.WT_WL = RMSE_func(TD.R_mean, WL.R_mean))
-  
-  data <- data %>% 
-    pivot_longer(cols = starts_with("RMSE"), names_to = "Comparison", values_to = "RMSE") %>%
-    mutate(Comparison = factor(Comparison, levels = c("RMSE.KN_Cori", "RMSE.KN_WT", "RMSE.KN_WL", 
-                                                      "RMSE.Cori_WT", "RMSE.Cori_WL", "RMSE.WT_WL")))
-  
-  data$Comparison <- data$Comparison %>% fct_recode(`Cori vs Wallinga & Lipsitch` = "RMSE.Cori_WL",
-                                                `Cori vs Wallinga & Teunis` = "RMSE.Cori_WT",
-                                                `Simple Ratio vs Cori` = "RMSE.KN_Cori",
-                                                `Simple Ratio vs Wallinga & Lipsitch` = "RMSE.KN_WL",
-                                                `Simple Ratio vs Wallinga & Tuenis` = "RMSE.KN_WT",
-                                                `Walinga & Teunis vs Wallinga & Lipsitch` = "RMSE.WT_WL")
-  
+
   return(data)
 }
 
