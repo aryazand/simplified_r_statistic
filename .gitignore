@@ -8,9 +8,12 @@ presentations/**/*.pdf
 presentations/**/*.html
 presentations/**/*.csv
 !presentations/Results/table_1\ -\ Description of Rt Estimation Methods.csv
-presentations/**/*.tex
+**/*.tex
+**/*.log
 presentations/Results/Figure_1.png
 simplified_r_statistic/case_data.csv
 simplified_r_statistic/initial_data.csv
 simplified_r_statistic/*.html
+simplified_r_statistic/_cache/
+presentations/Results/_cache/
 scratch/*
