@@ -16,18 +16,28 @@ smooth_new_cases <- function(data, smoothing_window) {
   data$new_cases_smoothed[is.na(data$new_cases_smoothed)] = data$new_cases[is.na(data$new_cases_smoothed)]
   
   # round the smoothed new cases to whole numbers
-  data$new_cases_smoothed= round(data$new_cases_smoothed)
+  data$new_cases_smoothed = round(data$new_cases_smoothed)
   
-  # Remove smoothed new cases that result in NAs or leading 0s
-  data = data %>% filter(!is.na(new_cases_smoothed)) %>% 
+  return(data)
+}
+
+## ----- Remove Leading Zeros ------
+
+remove_leading_unnecessary_data <- function(data) {
+  
+  data = data %>% 
     group_by(region, region_type, regionID, regionID_type) %>%
-    mutate(reference_date = date[min(which((new_cases_smoothed > 0)))]) %>%
+    # Remove Regions that are just NAs
+    filter(sum(is.na(new_cases)) != n()) %>%
+    # Remove Leading 0s or NAs
+    mutate(reference_date = date[min(which((new_cases > 0)))]) %>%
     filter(date >= reference_date) %>%
     dplyr::select(-reference_date) %>%
     ungroup()
   
   return(data)
 }
+
 
 ## ---- Simple-R-Estimate ----
 
