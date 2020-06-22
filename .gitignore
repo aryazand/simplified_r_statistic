@@ -15,5 +15,6 @@ simplified_r_statistic/case_data.csv
 simplified_r_statistic/initial_data.csv
 simplified_r_statistic/*.html
 simplified_r_statistic/_cache/
+simplified_r_statistic/all_regions.csv
 presentations/Results/_cache/
 scratch/*
