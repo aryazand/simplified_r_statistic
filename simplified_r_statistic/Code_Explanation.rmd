@@ -4,7 +4,15 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE, echo=F, message=F, warning=F}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = T,
+                      cache.path = "_cache/",
+                      warning = F,
+                      message = F)
+library("furrr")
+
+no_cores <- availableCores() - 1
+plan(multicore, workers = no_cores)
 ```
 
 ```{r include=F}
