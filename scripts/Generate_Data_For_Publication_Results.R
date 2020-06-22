@@ -62,7 +62,6 @@ EstimateR.cori_safe = safely(EstimateR.cori)
 EstimateR.WT_safe = safely(EstimateR.WT)
 
 R_estimations <- function(data, var_D, var_D_sd, var_tau, smoothing_window) {
-  data = smooth_new_cases(data, smoothing_window)
   
   data <- data %>%
     arrange(date) %>%
@@ -70,26 +69,26 @@ R_estimations <- function(data, var_D, var_D_sd, var_tau, smoothing_window) {
     nest(CD = -c(region, region_type, regionID, regionID_type))
   
   data <- data %>% 
-    mutate(R_estimate = map(CD, function(CD_) EstimateR.simple(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, tau = var_tau))) %>%
+    mutate(R_estimate = map(CD, function(CD_) EstimateR.simple(date = CD_$date, Is = CD_$new_cases, si_mean = var_D, tau = var_tau))) %>%
     mutate(CD = map2(CD, R_estimate, left_join, by="date")) %>%
     dplyr::select(-R_estimate)
   
   data <- data %>% 
-    mutate(R_estimate = map(CD, function(CD_) EstimateR.cori_safe(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+    mutate(R_estimate = map(CD, function(CD_) EstimateR.cori_safe(date = CD_$date, Is = CD_$new_cases, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
     filter(map_lgl(R_estimate, function(i) is.null(i[["error"]]))) %>%
     mutate(R_estimate = map(R_estimate, function(i) i[["result"]])) %>%
     mutate(CD = map2(CD, R_estimate, left_join, by="date")) %>%
     dplyr::select(-R_estimate)
   
   data <- data %>% 
-    mutate(R_estimate = map(CD, function(CD_) EstimateR.WT_safe(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
+    mutate(R_estimate = map(CD, function(CD_) EstimateR.WT_safe(date = CD_$date, Is = CD_$new_cases, si_mean = var_D, si_sd = var_D_sd))) %>%
     filter(map_lgl(R_estimate, function(i) is.null(i[["error"]]))) %>%
     mutate(R_estimate = map(R_estimate, function(i) i[["result"]])) %>%
     mutate(CD = map2(CD, R_estimate, left_join, by="date")) %>%
     dplyr::select(-R_estimate)
   
   data <- data %>% 
-    mutate(R_estimate = map(CD, function(CD_) EstimateR.WL_safe(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
+    mutate(R_estimate = map(CD, function(CD_) EstimateR.WL_safe(date = CD_$date, Is = CD_$new_cases, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
     filter(map_lgl(R_estimate, function(i) is.null(i[["error"]]))) %>%
     mutate(R_estimate = map(R_estimate, function(i) i[["result"]])) %>%
     mutate(CD = map2(CD, R_estimate, left_join, by="date")) %>%
