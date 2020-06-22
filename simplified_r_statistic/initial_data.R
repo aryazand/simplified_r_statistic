@@ -9,7 +9,7 @@ DATA = read_csv("./simplified_r_statistic/case_data.csv", col_types = "ccccDdld"
 data <- DATA %>% filter(region == "World")
 
 # Smooth Data
-data = smooth_new_cases(data, smoothing_window = 7)
+data = smooth_new_cases(data, smoothing_window = 1)
 
 # Calculate R
 var_tau = 7
