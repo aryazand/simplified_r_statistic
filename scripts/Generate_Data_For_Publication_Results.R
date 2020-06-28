@@ -38,14 +38,22 @@ parameter_combos = cross(parameter_list)
 data = read_csv("./simplified_r_statistic/case_data.csv")
 data = data %>%
   group_by(region, regionID, region_type, regionID_type) %>%
+  # Only choose regions with enough data
   filter(n() > 20) %>%
   filter(max(new_cases) > 10) %>%
+  # Don't choose non-geographic regions
+  filter(!grepl("Unknown", region)) %>% 
+  # Remove "World" from nation list
+  filter(region != "World") %>%
   ungroup()
 
 set.seed(19890616)
 data_1 = data %>% filter(region_type == "state") %>% filter(region %in% sample(unique(.$region), 10))
 data_2 = data %>% filter(region_type == "county") %>% filter(region %in% sample(unique(.$region), 10))
-data_3 = data %>% filter(region_type == "nation") %>% filter(region %in% sample(unique(.$region), 10))
+data_3 = data %>% filter(region_type == "nation") %>% 
+  group_by(region) %>% filter(mean(new_cases) > 100) %>% ungroup() %>%
+  filter(region %in% c("United States", "Canada", "Germany", "Israel", "United Kingdom", "Mexico", "China", 
+                       sample(unique(.$region), 10)))
 
 data = bind_rows(data_1, data_2, data_3)
 
