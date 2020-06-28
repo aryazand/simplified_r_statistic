@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Schematic of Data Processing
 Click on a node in the schematic to be taken to relevant part of the code below
 
-```{r echo=F, message=F, warning=F, fig.width=10, fig.height=4}
+```{r echo=F, message=F, warning=F, fig.align='left'}
 library("DiagrammeR")
 
 grViz("
@@ -19,19 +19,15 @@ grViz("
     # a 'graph' statement
     graph [compound = true, nodesep = .5, ranksep = .25, color = crimson]
     
+    # several 'node' statements
     node [shape = box, fontname = Helvetica, fontsize = 40]
     '@@1'; '@@2'; '@@3'; '@@4'; '@@5'; '@@6'; 
     '@@7'; '@@8'; '@@9'; '@@10'; '@@11'; '@@12';
-    '@@14'; '@@15'; '@@16'; '@@19';
-    
-    # several 'node' statements
-    node [shape = plaintext, fontname = Helvetica, fontsize = 40]
-    '@@13';
-    
-    node [shape = oval, fontname = Helvetica, x = 100, fontsize = 40]
-    '@@17', '@@18';
+    '@@13', '@@14'; '@@15'; '@@16';
     
     # edge definitions with the node IDs
+    edge [minlen = 3, penwidth = 3]
+    
     '@@1' -> '@@2';
     '@@3' -> '@@4';
     '@@5' -> '@@6';
@@ -40,16 +36,27 @@ grViz("
     
     subgraph cluster0 {
       label = 'Clean Data';
-      fontsize = 40;
+      fontsize = 50;
+      fontname = 'Helvetica bold';
+      margin = 50;
       '@@8' -> '@@9' -> '@@10';
     }
     
     '@@7' -> '@@8'    [lhead = cluster0];
     
-    '@@10' -> '@@11' -> '@@12' -> '@@13' -> {'@@14' '@@15' '@@16' '@@19'};
+    '@@10' -> '@@11'  [ltail = cluster0];
     
-    '@@17' -> '@@13';
-    '@@18' -> '@@13';
+    '@@11' -> '@@12'
+    
+    '@@12' -> '@@13' [lhead = cluster1]
+    
+    subgraph cluster1 {
+      label = 'Estimate R'; 
+      fontsize = 50;
+      margin = 50;
+      fontname = 'Helvetica bold';
+      '@@13' -> '@@14' -> '@@15' -> '@@16' [style = invis]
+    }
   }
     
   [1]: 'Download US county data table \\n from NYT'
@@ -64,13 +71,13 @@ grViz("
   [10]: 'Interprolate total cases for dates that were removed'
   [11]: 'Select geographic area(s)'
   [12]: 'Smooth data with a rolling mean' 
-  [13]: 'Estimate R'
-  [14]: 'Estimate R with Simple Ratio method'
-  [15]: 'Estimate R with Cori et al (2013) method'
-  [16]: 'Estimate R with Wallinga and Teunis (2004) method'
+  [13]: 'Estimate R with Simple Ratio method'
+  [14]: 'Estimate R with Cori et al (2013) method'
+  [15]: 'Estimate R with Wallinga and Teunis (2004) method'
+  [16]: 'Estimate R with Wallinga and Lipsitch (2007) method'
   [17]: 'Define \\n Serial/Generational \\n Interval Distribution' 
   [18]: 'Define \\n Time Window for estimating R' 
-  [19]: 'Estimate R with Wallinga and Lipsitch (2007) method'
+  
 ")
 ```
 
