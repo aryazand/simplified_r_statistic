@@ -111,7 +111,7 @@ EstimateR.cori <- function(date, Is, si_mean, si_sd, tau) {
 ## ---- WT-R-Estimate----
 library("R0")
 
-EstimateR.WT <- function(date, Is, si_mean, si_sd) {
+EstimateR.WT <- function(date, Is, si_mean, si_sd, tau = NULL) {
   
   mGT = generation.time("gamma", c(si_mean, si_sd))
   names(Is) = date
@@ -145,27 +145,32 @@ EstimateR.WT <- function(date, Is, si_mean, si_sd) {
 ## ---- WL-R-Estimate----
 library("R0")
 
-EstimateR.WL <- function(date, Is, si_mean, si_sd, tau) {
+EstimateR.WL <- function(dates, Is, si_mean, si_sd, tau) {
   library("R0")
   library("tidyverse")
   
   mGT = generation.time("gamma", c(si_mean, si_sd))
   
   #-----------
-  # Use a negative binomial distribution to estimate the growth rate for each 
+  # Use a poisson distribution to estimate the growth rate for each 
   # period size tau
   #------------
-  df = data.frame(day = seq_along(Is), Is = round(Is))
+  df = data.frame(day = seq_along(Is), Is)
   
   model = map(1:(length(Is)-tau), function(t) 
     glm(Is ~ day, family="poisson", data = slice(df, t:(t+tau)))
   )
   
-  r = map_dbl(model, function(m) as.numeric(coef(m)["day"]))
+  # data is easier to access
+  model.t = transpose(model) %>% map(., unlist)
   
-  get_confint = safely(confint)
-  r.confint = map(model, get_confint) %>% transpose() %>% .[[1]]
-  names(r.confint) = date[(1+(floor(tau/2))):(length(date)-(ceiling(tau/2)))]
+  # get exponential growth value
+  r = model.t$coefficients %>% matrix(ncol=2, byrow=T) %>% .[,2]
+  
+  # get confidence interval for r
+  confint.safe = safely(confint)
+  r.confint = map(model, confint.safe) %>% transpose() %>% .[[1]]
+  names(r.confint) = dates[(1+(floor(tau/2))):(length(dates)-(ceiling(tau/2)))]
   r.confint <- map(r.confint, data.frame)
   r.confint <- map(r.confint, function(x) x[2,])
   r.confint = bind_rows(r.confint, .id="date")
