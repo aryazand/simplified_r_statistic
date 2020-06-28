@@ -100,9 +100,9 @@ EstimateR.cori <- function(date, Is, si_mean, si_sd, tau) {
   
   df = data.frame(
     date = tail(date-round(tau/2), -tau),
-    Cori.R_mean = r_estimates$R$`Mean(R)`,
-    Cori.R_Quantile_025 = r_estimates$R$`Quantile.0.025(R)`,
-    Cori.R_Quantile_975 = r_estimates$R$`Quantile.0.975(R)`
+    cori.R_mean = r_estimates$R$`Mean(R)`,
+    cori.R_Quantile_025 = r_estimates$R$`Quantile.0.025(R)`,
+    cori.R_Quantile_975 = r_estimates$R$`Quantile.0.975(R)`
   )
 
   return(df)
