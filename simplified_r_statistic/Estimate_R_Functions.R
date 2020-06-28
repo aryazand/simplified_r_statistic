@@ -41,7 +41,7 @@ remove_leading_unnecessary_data <- function(data) {
 
 ## ---- Simple-R-Estimate ----
 
-EstimateR.simple <- function(date, Is, si_mean, tau) {
+EstimateR.simple <- function(date, Is, si_mean, tau, si_sd = NULL) {
   
   df = data.frame(date, Is)
     
@@ -51,23 +51,36 @@ EstimateR.simple <- function(date, Is, si_mean, tau) {
     mutate(numerator = lead(denominator, si_mean)) %>%
     mutate(numerator = replace(numerator, which(numerator == 0), NA)) %>%
     mutate(denominator = replace(denominator, which(denominator == 0), NA)) %>%
-    mutate(`Simple Ratio.R_mean` = numerator/denominator)
+    mutate(simple.R_mean = numerator/denominator)
   
   # remove any ratios involving 0 new_cases in denominator or numerator
-  df_2 = df %>% filter(!is.na(`Simple Ratio.R_mean`))
+  df_2 = df %>% filter(!is.na(simple.R_mean))
   
-  # Confidence Interval. Compared by binomial test
-  CIs = map2(df_2$numerator, df_2$denominator, function(i,j) binom.test(c(i,j), sum(i,j), p=0.5, alternative="two.sided"))
-  CIs = transpose(CIs) %>% .$conf.int %>% unlist() %>% matrix(ncol=2, byrow=T)
-  CIs = CIs/(1-CIs)
+  # Confidence Interval.using beta representation of Clopper-Pearson method 
+  # (instead of using poisson.test(), which uses binom.test indirectly)
+  
+  p.L <- function(x, n, alpha = 0.025) {
+    p = qbeta(alpha, x, n - x + 1)
+    p[x == 0] = 0
+    return(p)
+  }
+  p.U <- function(x, n, alpha = 0.025) {
+    p = qbeta(1 - alpha, x + 1, n - x)
+    p[x == n] = 1
+    return(p)
+  }
+  
+  CI.L = p.L(x = df_2$numerator, n = df_2$numerator + df_2$denominator)
+  CI.U = p.U(x = df_2$numerator, n = df_2$numerator + df_2$denominator)
     
-  df_2 = df_2 %>% mutate(`Simple Ratio.R_Quantile_025` = CIs[,1], 
-                         `Simple Ratio.R_Quantile_975` = CIs[,2])
+  df_2$simple.R_Quantile_025 = CI.L/(1-CI.L)
+  df_2$simple.R_Quantile_975 = CI.U/(1-CI.U)
   
+  # Join back
   df = left_join(df, df_2, by=colnames(df)[colnames(df) %in% colnames(df_2)])
   
   # Select columns to output
-  df = df %>% dplyr::select(date, `Simple Ratio.R_mean`, `Simple Ratio.R_Quantile_025`, `Simple Ratio.R_Quantile_975`)
+  df = df %>% dplyr::select(date, "simple.R_mean", "simple.R_Quantile_025", "simple.R_Quantile_975")
   
   return(df)
 }
