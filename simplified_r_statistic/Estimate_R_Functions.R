@@ -115,17 +115,29 @@ EstimateR.WT <- function(date, Is, si_mean, si_sd) {
   
   mGT = generation.time("gamma", c(si_mean, si_sd))
   names(Is) = date
-  r_estimates = estimate.R(Is, GT = mGT, methods="TD", begin=1, end=as.numeric(length(Is)), nsim=1000)
+  estimate.R_safe = safely(estimate.R)
+  r_estimates = estimate.R_safe(Is, GT = mGT, methods="TD", begin=1, end=as.numeric(length(Is)), nsim=1000)
   
-  df = data.frame(
-    date = as.Date(names(r_estimates$estimates[["TD"]]$R), origin="1970-01-01"),
-    `WT.R_mean` = r_estimates$estimates[[1]]$R,
-    `WT.R_Quantile_025` = r_estimates$estimates[[1]]$conf.int[[1]],
-    `WT.R_Quantile_975` = r_estimates$estimates[[1]]$conf.int[[2]]
-  ) 
-  
-  # for some reason last R estimate from TD always ends up as 0. So we'll remove that
-  df = df[-c(1, nrow(df)),]
+  if (is.null(r_estimates[["error"]])) {
+    
+    r_estimates = r_estimates[["result"]]
+    
+    df = data.frame(
+      date = as.Date(names(r_estimates$estimates[["TD"]]$R), origin="1970-01-01"),
+      `WT.R_mean` = r_estimates$estimates[[1]]$R,
+      `WT.R_Quantile_025` = r_estimates$estimates[[1]]$conf.int[[1]],
+      `WT.R_Quantile_975` = r_estimates$estimates[[1]]$conf.int[[2]]
+    )
+    # for some reason last R estimate from TD always ends up as 0. So we'll remove that
+    df = df[-c(1, nrow(df)),]
+  } else {
+    df = data.frame(
+      date = date,
+      `WT.R_mean` = NA,
+      `WT.R_Quantile_025` = NA,
+      `WT.R_Quantile_975` = NA
+    )
+  }
   
   return(df)
 }
