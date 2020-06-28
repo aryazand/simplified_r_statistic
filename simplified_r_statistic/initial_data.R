@@ -25,4 +25,14 @@ data <- data %>%
   ungroup() %>%
   dplyr::select(-estimateR)
 
+data = data %>% pivot_longer(cols=contains(".R_"), 
+                             names_to = c("Method", ".value"),
+                             names_sep=".R_")
+
+
+data$smoothing_window = 1
+data$tau = 7
+data$GT_mean = 4
+data$GT_SD = 3
+
 write_csv(data, "./simplified_r_statistic/initial_data.csv")
