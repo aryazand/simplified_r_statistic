@@ -5,8 +5,6 @@ output: html_document
 
 ```{r setup, include=FALSE, echo=F, message=F, warning=F}
 knitr::opts_chunk$set(echo = TRUE,
-                      cache = T,
-                      cache.path = "_cache/",
                       warning = F,
                       message = F)
 library("furrr")
@@ -39,35 +37,13 @@ US_countydata <- read_csv("https://raw.githubusercontent.com/nytimes/covid-19-da
 #download country level data from covid.ourworldindata.org
 countrydata <- read_csv("https://covid.ourworldindata.org/data/ecdc/full_data.csv", col_types = "Dcnnnn")
 
+#download Canadian province data from Health Canada
+canada_data = read_csv("https://health-infobase.canada.ca/src/data/covidLive/covid19.csv")
+
 #download US State level data from covidtracking.com
 column_specs = cols(
     date = col_date(format = "%Y%m%d"),
-    state = col_character(),
-    positive = col_double(),
-    negative = col_double(),
-    pending = col_double(),
-    hospitalizedCurrently = col_double(),
-    hospitalizedCumulative = col_double(),
-    inIcuCurrently = col_double(),
-    inIcuCumulative = col_double(),
-    onVentilatorCurrently = col_double(),
-    onVentilatorCumulative = col_double(),
-    recovered = col_double(),
-    dataQualityGrade = col_character(),
-    lastUpdateEt = col_datetime(format = "%m/%d/%Y %H:%M"),
-    hash = col_character(),
-    dateChecked = col_skip(),
-    death = col_double(),
-    hospitalized = col_double(),
-    total = col_double(),
-    totalTestResults = col_double(),
-    posNeg = col_double(),
-    fips = col_character(),
-    deathIncrease = col_double(),
-    hospitalizedIncrease = col_double(),
-    negativeIncrease = col_double(),
-    positiveIncrease = col_double(),
-    totalTestResultsIncrease = col_double()
+    lastUpdateEt = col_datetime(format = "%m/%d/%Y %H:%M")
 )
 
 US_statedata <- read_csv("https://covidtracking.com/api/v1/states/daily.csv", col_types = column_specs)
@@ -86,14 +62,17 @@ library(tigris)
 
 US_countydata <- US_countydata %>%
     unite(col = region, county, state, sep=", ") %>%
-    dplyr::select(date, region, regionID = fips, cumulative_cases = cases) %>%
+    dplyr::select(date, region, regionID = fips, cumulative_cases = cases, cumulative_deaths = deaths) %>%
     mutate(region_type = "county", regionID_type = "fips")
 
 US_statedata <- US_statedata %>%
-    dplyr::select(date, region = state, cumulative_cases = positive, regionID = fips) %>%
+    dplyr::select(date, region = state, regionID = fips,
+                  cumulative_cases = positive, 
+                  cumulative_deaths = death) %>%
     mutate(region_type = "state", regionID_type = "fips")
-    countrydata <- countrydata %>%
-    dplyr::select(date, region = location, cumulative_cases = total_cases) %>%
+
+countrydata <- countrydata %>%
+    dplyr::select(date, region = location, cumulative_cases = total_cases, cumulative_deaths = total_deaths) %>%
     mutate(region_type = "nation", regionID = NA, regionID_type = NA)
     
 #Replace abberviated names with full names in US State data
@@ -102,12 +81,28 @@ fips_reference = tigris::fips_codes %>% dplyr::select(1:3) %>% distinct()
     mutate(region = state_name) %>%
     mutate(region = paste(region, "United States", sep=", ")) %>%
     dplyr::select(-c(state, state_name))
+
+# Standardize Canada Data
+canada_data$date = as.Date(canada_data$date, format = "%d-%m-%Y")
+canada_data$pruid = as.character(canada_data$pruid)
+canada_data = canada_data %>% 
+  mutate_at(5:21, function(x) replace(x, which(x == "N/A"), NA)) %>%
+  mutate_at(5:21, as.numeric)
+
+canada_data = canada_data %>% 
+  dplyr::select(date, 
+                region = "prname", 
+                cumulative_cases = "numconf",
+                regionID = "pruid") %>%
+  mutate(region_type = "province",
+         regionID_type = "pruid") %>%
+  mutate(region = paste0(region, ", Canada"))
 ```
 
 <div id="bind_data">
 Bind rows together
 ```{r bind_data}
-DATA <- bind_rows(list(US_countydata, US_statedata, countrydata))
+DATA <- bind_rows(list(US_countydata, US_statedata, countrydata, canada_data))
 ```
 </div>
 
@@ -203,7 +198,6 @@ DATES_TO_INTERPROLATE = DATES_TO_INTERPROLATE %>%
 DATA = DATA %>% mutate(INTERPROLATED = F)
 
 DATA = bind_rows(DATA, DATES_TO_INTERPROLATE)
-DATA = DATA %>% dplyr::select(region, region_type, regionID, regionID_type, date, cumulative_cases, INTERPROLATED)
 
 # -------------------------------------------------------
 # Interoprolate unknown cumulative cases
@@ -240,6 +234,7 @@ DATA = DATA %>%
 </div>
 
 ```{r echo=F, message=F, warning=F}
+DATA <- DATA %>% dplyr::select(region, regionID, region_type, regionID_type, date, cumulative_cases, cumulative_deaths, INTERPROLATED, new_cases)
 write_csv(DATA, "case_data.csv")
 ```
 
@@ -297,8 +292,8 @@ df = left_join(data, simpleR.df, by="date")
 library(ggpubr)
 
 ggplot(df) + 
-  geom_ribbon(aes(x = date,  ymin=`Simple Ratio.R_Quantile_025`, ymax=`Simple Ratio.R_Quantile_975`, group = region), alpha=0.15) +
-  geom_line(aes(x = date, y = `Simple Ratio.R_mean`, group = region), size =1.25) +
+  geom_ribbon(aes(x = date,  ymin=`simple.R_Quantile_025`, ymax=`simple.R_Quantile_975`, group = region), alpha=0.15) +
+  geom_line(aes(x = date, y = `simple.R_mean`, group = region), size =1.25) +
   geom_hline(yintercept = 1, linetype = 2) +
   labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
   scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
@@ -326,8 +321,8 @@ coriR.df = EstimateR.cori(date = data$date, Is = data$new_cases_smoothed, si_mea
 df = left_join(data, coriR.df, by="date")
 
 ggplot(df) + 
-  geom_ribbon(aes(x = date,  ymin=Cori.R_Quantile_025, ymax=Cori.R_Quantile_975, group = region), alpha=0.15) +
-  geom_line(aes(x = date, y = Cori.R_mean, group = region), size =1.25) +
+  geom_ribbon(aes(x = date,  ymin=cori.R_Quantile_025, ymax=cori.R_Quantile_975, group = region), alpha=0.15) +
+  geom_line(aes(x = date, y = cori.R_mean, group = region), size =1.25) +
   geom_hline(yintercept = 1, linetype = 2) +
   labs(subtitle = "Shaded Region gives 95% CI for each R estimate", y = "R estimate") +
   scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
