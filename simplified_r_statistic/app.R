@@ -18,6 +18,8 @@ library(EpiEstim)
 library(R0)
 library(shinyjs)
 library(shinycssloaders)
+library(geojsonio)
+library(leaflet)
 
 # Load Data ========================
 
@@ -156,34 +158,49 @@ ui <- fluidPage(
                 )
             ),
         
-            ## * Plots ============================
+            ## * Visualizations ============================
             
             column(6,
-              tags$p("Hover near lines in plots for more information"),
-              
-              div( 
-                style = "position:relative",
-                plotOutput("plot_R", height="400px", 
-                           hover = hoverOpts("plot_hover_1", delay = 100, delayType = "debounce"),
-                           dblclick = dblclickOpts("plot_dblclick_1")) %>% withSpinner(color="#0dc5c1"),
-                uiOutput("hover_info_1")
-              ),
-              
-              fluidRow(              
-                    tags$b("Select data to display on secondary plot"),
-                    splitLayout(cellWidths = c("15%", "15%"),
-                        actionLink("button_CumulativeCases", "Cumulative Cases"),
-                        actionLink("button_CumulativeDeaths", "Cumulative Deaths"),
-                        actionLink("button_NewCases", "New Cases")
-                    )),
+              tabsetPanel(
+                ## ** Plots ============================
                 
-              div( 
-                style = "position:relative",
-                plotOutput("secondary_plot", height="400px", 
-                           hover = hoverOpts("plot_hover_2", delay = 100, delayType = "debounce")) %>% withSpinner(color="#0dc5c1"),
-                uiOutput("hover_info_2")
-              ),
-              
+                tabPanel("Plots",
+                  tags$p("Hover near lines in plots for more information"),
+                  div( 
+                    style = "position:relative",
+                    plotOutput("plot_R", height="400px", 
+                               hover = hoverOpts("plot_hover_1", delay = 100, delayType = "debounce"),
+                               dblclick = dblclickOpts("plot_dblclick_1")) %>% withSpinner(color="#0dc5c1"),
+                    uiOutput("hover_info_1")
+                  ),
+                  
+                  fluidRow(              
+                        tags$b("Select data to display on secondary plot"),
+                        splitLayout(cellWidths = c("15%", "15%"),
+                            actionLink("button_CumulativeCases", "Cumulative Cases"),
+                            actionLink("button_CumulativeDeaths", "Cumulative Deaths"),
+                            actionLink("button_NewCases", "New Cases")
+                        )),
+                    
+                  div( 
+                    style = "position:relative",
+                    plotOutput("secondary_plot", height="400px", 
+                               hover = hoverOpts("plot_hover_2", delay = 100, delayType = "debounce")) %>% withSpinner(color="#0dc5c1"),
+                    uiOutput("hover_info_2")
+                  )
+                ),
+                ## ** Map ===================
+                tabPanel("Map", fluid = TRUE, 
+                         tags$p("This map shows the Simple Ratio Rt values as a map")
+                         sliderInput("map_date", label = "Date",
+                                     min = min(initial_data$date), max = max(initial_data$date), 
+                                     value=as.Date("2020-06-16")),
+                         selectInput("map_view", label = "Region Type", 
+                                     choices = c("World Nations", "US States", "US Counties", "Canadian Provinces"),
+                                     selected = "World Nations"),
+                         leafletOutput("mymap") %>% withSpinner(color="#0dc5c1")
+                )    
+              )
             ),
             
             ## * Left Panel ============================
@@ -214,8 +231,8 @@ ui <- fluidPage(
             )
         )), 
         
-        # Other Tabs ===================
         
+        # Other Tabs ===================
         tabPanel("Introduction", fluid=TRUE, withMathJax(includeMarkdown("Introduction.md"))),
         tabPanel("Methods", fluid = TRUE,
                  tags$head(tags$style(HTML(".node:hover polygon {fill: red;} .node {cursor:pointer}"))),
@@ -701,6 +718,155 @@ server <- function(input, output, clientData, session) {
 
          score_cards = paste(score_cards, collapse=" ")
          HTML(score_cards)
+    })
+    
+    # Render Map ==========
+    
+    worldmap0 <- geojson_read("world.geo.json", what = "sp")
+    statemap0 <- geojson_read("gz_2010_us_040_00_20m.json", what = "sp")
+    countymap0 <- geojson_read("gz_2010_us_050_00_20m.json", what = "sp")
+    countymap0@data <- countymap0@data %>% unite(col = "FIPS", STATE, COUNTY, sep="")
+    provincemap0 <- geojson_read("canadian_pprovinces.json", what = "sp")
+    provincemap0$name <- gsub("Yukon Territory", "Yukon", provincemap0$name)
+    
+    map_data = reactiveValues(data = NULL, long = NULL, lat = NULL, zoom = NULL)
+    
+    observeEvent({
+      c(input$tau,
+        input$GT_mean,
+        input$smoothing_window,
+        input$map_view)
+    }, {
+      
+      if(input$map_view == "World Nations") {
+        data = DATA %>% filter(region_type == "nation")
+      } else if(input$map_view == "Canadian Provinces") {
+        data = DATA %>% filter(region_type == "province") %>%
+          separate(region, into = c("province_name", "nation_name"), sep = ", ", remove = F)
+      } else if(input$map_view == "US States") {
+        data = DATA %>% filter(region_type == "state")
+      } else if(input$map_view == "US Counties") {
+        data = DATA %>% filter(region_type == "county")
+      } 
+      
+      data = smooth_new_cases(data, input$smoothing_window)
+      
+      data = data %>%
+        group_by(region) %>%
+        arrange(date) %>%
+        mutate(denominator = roll_sum(new_cases_smoothed,  input$tau, align="center", fill = c(NA, NA, NA))) %>%
+        mutate(numerator = lead(denominator, input$GT_mean)) %>%
+        ungroup() %>%
+        mutate(numerator = replace(numerator, which(numerator == 0), NA)) %>%
+        mutate(denominator = replace(denominator, which(denominator == 0), NA)) %>%
+        mutate(simple.R_mean = numerator/denominator)
+      
+      p.L <- function(x, n, alpha = 0.025) {
+        p = qbeta(alpha, x, n - x + 1)
+        p[x == 0] = 0
+        return(p)
+      }
+      
+      p.U <- function(x, n, alpha = 0.025) {
+        p = qbeta(1 - alpha, x + 1, n - x)
+        p[x == n] = 1
+        return(p)
+      }
+      
+      
+      CI.L = p.L(x = data$numerator, n = data$numerator + data$denominator)
+      CI.U = p.U(x = data$numerator, n = data$numerator + data$denominator)
+      
+      data$simple.R_Quantile_025 = CI.L/(1-CI.L)
+      data$simple.R_Quantile_975 = CI.U/(1-CI.U)
+      
+      
+      # Color Bins
+      data$map_color_Rt = NA
+      data$map_color_Rt[data$simple.R_Quantile_975 <= 1] = "#00FF00"
+      data$map_color_Rt[data$simple.R_Quantile_975 > 1 & data$simple.R_mean < 1] = "#FFFF00"
+      data$map_color_Rt[data$simple.R_Quantile_025 < 1 & data$simple.R_mean >= 1] = "#FFA500"
+      data$map_color_Rt[data$simple.R_Quantile_025 >= 1] = "#FF0000"
+      
+      map_data$data = data
+    })
+    
+    output$mymap <- renderLeaflet({
+      
+      data = map_data$data
+      data= data %>% filter(date == input$map_date)
+      
+      # Setup Data
+      if(input$map_view == "World Nations") {
+        map_to_display = worldmap0
+        map_to_display@data <- left_join(map_to_display@data, data, by = c("name" = "region")) %>%
+          rename(region = "name")
+        
+        long = 0
+        lat = 25
+        zoom = 1
+        
+      } else if(input$map_view == "Canadian Provinces") {
+        map_to_display = provincemap0
+        map_to_display@data <- left_join(map_to_display@data, data, by = c("name" = "province_name"))
+        
+        long = -99
+        lat = 56
+        zoom = 2
+        
+      } else if(input$map_view == "US States") {
+        map_to_display = statemap0
+        map_to_display@data <- left_join(map_to_display@data, data, by = c("STATE" = "regionID"))
+        
+        long = -99
+        lat = 45
+        zoom = 2
+        
+      } else if(input$map_view == "US Counties") {
+        map_to_display = countymap0
+        map_to_display@data <- left_join(map_to_display@data, data, by = c("FIPS" = "regionID"))
+        
+        long = -99
+        lat = 45
+        zoom = 2
+      } 
+      
+     
+      
+      labels <- sprintf(
+        "<strong>%s</strong><br/>%.2f (%.2f - %.2f)",
+        map_to_display$region, map_to_display$simple.R_mean, 
+        map_to_display$simple.R_Quantile_025, map_to_display$simple.R_Quantile_975
+      ) %>% lapply(htmltools::HTML)
+      
+      
+     m = leaflet(map_to_display) %>%
+        addTiles() %>%
+        setView(lng = long, lat = lat, zoom = zoom) %>%
+        addPolygons(
+          fillColor = map_to_display$map_color_Rt,
+          weight = 2,
+          opacity = 0.5,
+          color = "white",
+          dashArray = "3",
+          fillOpacity = 0.7,
+          highlight = highlightOptions(
+            weight = 5,
+            color = "#666",
+            dashArray = "",
+            fillOpacity = 0.7,
+            bringToFront = TRUE),
+          label = labels,
+          labelOptions = labelOptions(
+            style = list("font-weight" = "normal", padding = "3px 8px"),
+            textsize = "15px",
+            direction = "auto"))
+      
+      if(input$map_view == "US Counties") {
+        m = m %>% addPolylines(data = statemap0, color="#000000", weight=3)
+      }
+     
+     return(m)
     })
     
     # Code Page==========
