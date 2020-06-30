@@ -191,7 +191,7 @@ ui <- fluidPage(
                 ),
                 ## ** Map ===================
                 tabPanel("Map", fluid = TRUE, 
-                         tags$p("This map shows the Simple Ratio Rt values as a map")
+                         tags$p("This map shows the Simple Ratio Rt values as a map"),
                          sliderInput("map_date", label = "Date",
                                      min = min(initial_data$date), max = max(initial_data$date), 
                                      value=as.Date("2020-06-16")),
@@ -291,11 +291,11 @@ server <- function(input, output, clientData, session) {
         input$smoothing_window)
     },
     {
-      validate(
+      shiny::validate(
         need(input$region != "", "Please select a region")
       )
       
-      validate(
+      shiny::validate(
         need(input$Method != "", "Please select a method for estimating R")
       )
       
@@ -367,11 +367,11 @@ server <- function(input, output, clientData, session) {
     
     data_to_plot <- reactive({
       
-      validate(
+      shiny::validate(
         need(input$region != "", "Please select a region")
       )
       
-      validate(
+      shiny::validate(
         need(input$Method != "", "Please select a method for estimating R")
       )
       
@@ -414,11 +414,11 @@ server <- function(input, output, clientData, session) {
     
     plot_R = reactive({
       
-      validate(
+      shiny::validate(
         need(input$region != "", "Please select a region")
       )
       
-      validate(
+      shiny::validate(
         need(input$Method != "", "Please select a method for estimating R")
       )
          
@@ -722,11 +722,11 @@ server <- function(input, output, clientData, session) {
     
     # Render Map ==========
     
-    worldmap0 <- geojson_read("world.geo.json", what = "sp")
-    statemap0 <- geojson_read("gz_2010_us_040_00_20m.json", what = "sp")
-    countymap0 <- geojson_read("gz_2010_us_050_00_20m.json", what = "sp")
+    worldmap0 <- geojsonio::geojson_read("world.geo.json", what = "sp")
+    statemap0 <- geojsonio::geojson_read("gz_2010_us_040_00_20m.json", what = "sp")
+    countymap0 <- geojsonio::geojson_read("gz_2010_us_050_00_20m.json", what = "sp")
     countymap0@data <- countymap0@data %>% unite(col = "FIPS", STATE, COUNTY, sep="")
-    provincemap0 <- geojson_read("canadian_pprovinces.json", what = "sp")
+    provincemap0 <- geojsonio::geojson_read("canadian_pprovinces.json", what = "sp")
     provincemap0$name <- gsub("Yukon Territory", "Yukon", provincemap0$name)
     
     map_data = reactiveValues(data = NULL, long = NULL, lat = NULL, zoom = NULL)
