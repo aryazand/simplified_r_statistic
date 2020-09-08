@@ -4,9 +4,9 @@ header-includes:
 - \usepackage{caption}
 - \captionsetup[figure]{labelformat=empty}
 output:
-  word_document: default
   pdf_document:
     keep_tex: yes
+  word_document: default
 bibliography: references.bib
 ---
 
@@ -30,11 +30,11 @@ If we assume that the generation interval has very little variance (i.e. the tim
 
 $$R_t \approx \frac{I_{t+D}}{I_t}$$
 
-However, relying on reported of new cases violates this assumption for two reasons. First, the actual transmission of the virus doesn't conform to a rigid schedule. Two, there is inevitable variance in the timing of when new cases are reported (e.g. new cases are typically reported less over weekends). We can handle these two violations of the assumption by estimating $R_t$ as the ratio of the sums of new cases within two time periods size $\tau$ days (with the center of the time periods being on days $t$ and $t+D$). By considering the sum of new cases within larger time periods (e.g. 7 days), we capture secondary infections that didn't occur exactly $D$ days from the primary infection and we also counteract the variation in new case reporting. 
+However, relying on reported new cases violates this assumption for two reasons. First, the actual transmission of the virus doesn't conform to a rigid schedule. Two, there is inevitable variance in the timing of when new cases are reported (e.g. new cases are typically reported less over weekends). We can handle these two violations of the assumption by estimating $R_t$ as the ratio of the sums of new cases within two time periods size $\tau$ days (with the center of the time periods being on days $t$ and $t+D$). By considering the sum of new cases within larger time periods (e.g. 7 days), we capture secondary infections that didn't occur exactly $D$ days from the primary infection and we also counteract the variation in new case reporting. 
 
 $$ R_t \approx \frac{\sum_{t - \frac{\tau}{2} + D}^{t + \frac{\tau}{2} + D}I_i}{\sum_{t - \frac{\tau}{2}}^{t + \frac{\tau}{2}}I_i} = \frac{n_{t+D}}{n_t}$$
 
-Assuming that the number of new cases that occur each day is a poisson process, then we can consider $R_t$ as the ratio of two poisson rates. Thus, a 95% confidence interval for $R_t$ can be calculated as a binomial proportion confidence interval (with the number of successes being $n_{t+D}$ and the total number of trials being $n_{t}$) using the Clopper–Pearson method, as implemented in the `poisson.test()` function in the `stats` package for the R programming language [@rcoreteamLanguageEnvironmentStatistical2020].
+Assuming that the number of new cases that occur each day is a poisson process, then we can consider $R_t$ as the ratio of two poisson rates. Thus, a 95% confidence interval for $R_t$ can be calculated as a binomial proportion confidence interval (with the number of successes being $n_{t+D}$ and the total number of trials being $n_{t}$ + $n_{t+D}$) using the Clopper–Pearson method, as implemented in the `poisson.test()` function in the `stats` package for the R programming language [@rcoreteamLanguageEnvironmentStatistical2020].
 
 <!---
 Since it is nearly impossible for any public health programs to identify all new cases of infection each day, the reported new cases represent only a subset of the total cases. For estimation $R_t$ to be accurate, it depends on how this subset is selected in a few ways. First, the porportion of the total represented by this subset cannot change drastically between the two reporting periods (e.g. if the porportion of the population that is tested drastically increases between the two reporting periods, then $R_t$ will appear artificially inflated). Second, the demographics that influence susceptibility to the disease (or testing positive) of the people reported cannot change drastically between the reporting periods (e.g. only testing the elderly in one time period, and then switching to testing non-elderly will likely affect $R_t$ estimations). Third, ultimately the change in cases of the subset needs to reflect the rate of change of the entire population (e.g. if...)
@@ -373,18 +373,18 @@ For each geographic region selected, the web-app summarizes the last 3 weeks of 
 fig_S1
 ```
 
-```{r Figure_S2, fig.height = 6, fig.cap = "**Figure S2. Affect of modifying the Smoothing Window Size on Median Absolute Difference in $R_t$ Estimation.**"}
+```{r Figure_S2, fig.height = 6, fig.cap = "**Figure S2. Effect of modifying the Smoothing Window Size on Median Absolute Difference in $R_t$ Estimation.**"}
 fig_S2
 ```
 
-```{r Figure_S3, fig.cap = "**Figure S3. Affect of modifying $\\tau$ size on median absolute difference in $R_t$ estimation.** Some outliers were removed for better visualization."}
+```{r Figure_S3, fig.cap = "**Figure S3. Effect of modifying $\\tau$ size on median absolute difference in $R_t$ estimation.** Some outliers were removed for better visualization."}
 fig_S3
 ```
 
-```{r Figure_S4, fig.cap = "**Figure S4. Affect of modifying the mean of the generation interval on median absolute difference in $R_t$ estimation.**"}
+```{r Figure_S4, fig.cap = "**Figure S4. Effect of modifying the mean of the generation interval on median absolute difference in $R_t$ estimation.**"}
 fig_S4
 ```
 
-```{r Figure_S5, fig.cap = "**Figure S5. Affect of modifying the standard deviation of the generation interval on median absolute difference in $R_t$ estimation.**"}
+```{r Figure_S5, fig.cap = "**Figure S5. Effect of modifying the standard deviation of the generation interval on median absolute difference in $R_t$ estimation.**"}
 fig_S5
 ```

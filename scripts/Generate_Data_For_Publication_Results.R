@@ -31,31 +31,15 @@ parameter_list = list(smoothing_window = smoothing_window,
                       tau = tau)
 print(parameter_list)
 parameter_combos = cross(parameter_list)
+
 #-----------
 # Load Data
 #------------
 
-data = read_csv("./simplified_r_statistic/case_data.csv")
-data = data %>%
-  group_by(region, regionID, region_type, regionID_type) %>%
-  # Only choose regions with enough data
-  filter(n() > 20) %>%
-  filter(max(new_cases) > 10) %>%
-  # Don't choose non-geographic regions
-  filter(!grepl("Unknown", region)) %>% 
-  # Remove "World" from nation list
-  filter(region != "World") %>%
-  ungroup()
-
-set.seed(19890616)
-data_1 = data %>% filter(region_type == "state") %>% filter(region %in% sample(unique(.$region), 10))
-data_2 = data %>% filter(region_type == "county") %>% filter(region %in% sample(unique(.$region), 10))
-data_3 = data %>% filter(region_type == "nation") %>% 
-  group_by(region) %>% filter(mean(new_cases) > 100) %>% ungroup() %>%
-  filter(region %in% c("United States", "Canada", "Germany", "Israel", "United Kingdom", "Mexico", "China", 
-                       sample(unique(.$region), 10)))
-
-data = bind_rows(data_1, data_2, data_3)
+sim_data = read_rds("./results/seir_ode_dec60-7_sim.rds")
+sim_data.df = sim_data$sim_df %>% dplyr::select(time, incidence, obs_cases, true_r0, true_rt)
+sim_data.df = sim_data.df[2:150,]
+sim_data.df$time = as.Date(sim_data.df$time, origin = "2020-01-01")
 
 #-----------
 # Load Functions
@@ -63,35 +47,21 @@ data = bind_rows(data_1, data_2, data_3)
 
 R_estimations <- function(data, var_D, var_D_sd, var_tau, smoothing_window) {
   
-  data = smooth_new_cases(data, smoothing_window)
+  data <-left_join(data, 
+                   EstimateR.simple(date = data$time, Is = data$obs_cases, si_mean = var_D, tau = var_tau),
+                   by = c("time" = "date"))
   
-  data <- data %>%
-    arrange(date) %>%
-    group_by(region, region_type, regionID, regionID_type) %>%
-    nest(CD = -c(region, region_type, regionID, regionID_type))
+  data <-left_join(data, 
+                   EstimateR.cori(date = data$time, Is = data$obs_cases, si_mean = var_D, si_sd = var_D_sd, tau = var_tau),
+                   by = c("time" = "date"))
   
-  data <- data %>% 
-    mutate(R_estimate = map(CD, function(CD_) EstimateR.simple(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, tau = var_tau))) %>%
-    mutate(CD = map2(CD, R_estimate, left_join, by="date")) %>%
-    dplyr::select(-R_estimate)
+  data <-left_join(data, 
+                   EstimateR.WT(date = data$time, Is = data$obs_cases, si_mean = var_D, si_sd = var_D_sd, tau = var_tau),
+                   by = c("time" = "date"))
   
-  data <- data %>% 
-    mutate(R_estimate = map(CD, function(CD_) EstimateR.cori(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
-    mutate(CD = map2(CD, R_estimate, left_join, by="date")) %>%
-    dplyr::select(-R_estimate)
-  
-  data <- data %>% 
-    mutate(R_estimate = map(CD, function(CD_) EstimateR.WT(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd))) %>%
-    mutate(CD = map2(CD, R_estimate, left_join, by="date")) %>%
-    dplyr::select(-R_estimate)
-
-
-  data <- data %>% 
-    mutate(R_estimate = map(CD, function(CD_) EstimateR.WL(date = CD_$date, Is = CD_$new_cases_smoothed, si_mean = var_D, si_sd = var_D_sd, tau = var_tau))) %>%
-    mutate(CD = map2(CD, R_estimate, left_join, by="date")) %>%
-    dplyr::select(-R_estimate)
-
-  data = data %>% unnest(CD) %>% ungroup()
+  data <-left_join(data, 
+                   EstimateR.WL(date = data$time, Is = data$obs_cases, si_mean = var_D, si_sd = var_D_sd, tau = var_tau),
+                   by = c("time" = "date"))
   
   return(data)
 }
@@ -100,7 +70,7 @@ R_estimations <- function(data, var_D, var_D_sd, var_tau, smoothing_window) {
 # Apply Function with Parameters
 #------------------------------
 
-df = map(parameter_combos, function(i) R_estimations(data, var_D = i$GT_mean, var_D_sd = i$GT_SD, var_tau = i$tau, smoothing_window = i$smoothing_window))
+df = map(parameter_combos, function(i) R_estimations(sim_data.df, var_D = i$GT_mean, var_D_sd = i$GT_SD, var_tau = i$tau, smoothing_window = i$smoothing_window))
 
 names(df) = map_chr(parameter_combos, paste, collapse=",")
 df = bind_rows(df, .id = "parameters")
