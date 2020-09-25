@@ -24,6 +24,12 @@ library("ggpubr")
 new_cases.threshold = 10
 ```
 
+<!---
+## Methods
+
+(with the number of successes being $n_{t+D}$ and the total number of trials being $n_{t}$ + $n_{t+D}$) using the Clopper–Pearson method, as implemented in the `poisson.test()` function in the `stats` package for the R programming language [@rcoreteamLanguageEnvironmentStatistical2020].
+--->
+
 ## A Simple Ratio for Estimating $R_t$
 
 If we assume that the generation interval has very little variance (i.e. the time between a primary and secondary infection is most often equal to the mean of the generation interval distribution), then the $R_t$ on day $t$ can be estimated as the ratio of the number of new cases ($I$) on day $t+D$ and day $t$, where $D$ is equal to the mean generation interval. 
@@ -34,7 +40,7 @@ However, relying on reported new cases violates this assumption for two reasons.
 
 $$ R_t \approx \frac{\sum_{t - \frac{\tau}{2} + D}^{t + \frac{\tau}{2} + D}I_i}{\sum_{t - \frac{\tau}{2}}^{t + \frac{\tau}{2}}I_i} = \frac{n_{t+D}}{n_t}$$
 
-Assuming that the number of new cases that occur each day is a poisson process, then we can consider $R_t$ as the ratio of two poisson rates. Thus, a 95% confidence interval for $R_t$ can be calculated as a binomial proportion confidence interval (with the number of successes being $n_{t+D}$ and the total number of trials being $n_{t}$ + $n_{t+D}$) using the Clopper–Pearson method, as implemented in the `poisson.test()` function in the `stats` package for the R programming language [@rcoreteamLanguageEnvironmentStatistical2020].
+Assuming that the number of new cases that occur each day is a poisson process, then we can consider $R_t$ as the ratio of two poisson rates. Thus, a 95% confidence interval for $R_t$ can be calculated as a binomial proportion confidence interval (see Methods for more details). 
 
 <!---
 Since it is nearly impossible for any public health programs to identify all new cases of infection each day, the reported new cases represent only a subset of the total cases. For estimation $R_t$ to be accurate, it depends on how this subset is selected in a few ways. First, the porportion of the total represented by this subset cannot change drastically between the two reporting periods (e.g. if the porportion of the population that is tested drastically increases between the two reporting periods, then $R_t$ will appear artificially inflated). Second, the demographics that influence susceptibility to the disease (or testing positive) of the people reported cannot change drastically between the reporting periods (e.g. only testing the elderly in one time period, and then switching to testing non-elderly will likely affect $R_t$ estimations). Third, ultimately the change in cases of the subset needs to reflect the rate of change of the entire population (e.g. if...)
@@ -53,338 +59,156 @@ kable(., "latex", align="l", booktabs=TRUE, escape = F, caption = "Methods for E
 
 ## Performance of the Simple Ratio estimation of $R_t$
 
-To assess the performance of this simple ratio method of estimating $R_t$, we compared it to three previously published methods (**Table 1**)[@coriNewFrameworkSoftware2013; @wallingaDifferentEpidemicCurves2004; @wallingaHowGenerationIntervals2007]. We used all four methods to calculate daily $R_t$ esimations for the current SARS-CoV-2 pandemic in 10 countries, 10 US states, and 10 US counties (see **Methods** for details). Daily $R_t$ estimations for 4 of these regions are shown in **Figure 1A**. We then assess how well these methods agreed by measuring the absolute difference in $R_t$ estimations for each possible pair of methods. Prior to analysis, new cases were converted to a rolling 7 day average. We only compared days in which the number of new cases was greater than 10, because there is much greater fluctuation in $R_t$ estimations at low numbers of new cases (**Figure S1**). 
+To assess the performance of this simple ratio method, we used a Susceptible - Exposed - Infectious - Recovered (SEIR) model[] to generate simulated epidemics in which there is a known $R_t$ and then determined how well the simple ratio method can estimate the $R_t$ compared to the commonly used Cori et al method (**Table 1**)[@coriNewFrameworkSoftware2013].
 
-```{r baseline_parameters_analysis}
-
-# Load Data--------
-data_fig1 = read_csv("DATA - baseline_parameters.csv", col_types = "ddddffffDdldddddddddddddd")
-data_fig1 = data_fig1 %>% dplyr::select(region, region_type, date, new_cases, contains(".R_"))
-
-
-# Figure 1A ----------------
-
-panel_A = data_fig1 %>%
-            pivot_longer(cols=contains(".R_"), names_to = c("Method", ".value"), names_sep=".R_") %>%
-            filter(!is.na(mean) & !is.na(Quantile_025) & !is.na(Quantile_975)) %>%
-            mutate(Method = factor(Method, levels=c("Simple Ratio", "Cori", "WT", "WL"))) %>%
-            filter(region_type == "nation") %>%
-            filter(region %in% c("United States", "Germany", "Algeria", "China")) %>%
-            filter(date >= "2020-04-01") %>%
-          ggplot() +
-            geom_ribbon(aes(x=date, ymin=Quantile_025, ymax=Quantile_975, fill=Method, group=Method), alpha=0.2) +
-            geom_line(aes(x=date, y=mean, color=Method), size=1) +
-            geom_hline(yintercept = 1, linetype = 2) +
-            scale_x_date(date_breaks = '1 week', date_labels = '%b-%d') +
-            labs(x="Date", y="Rt Estimate") +
-            facet_wrap(~region, scales="free") + 
-            theme_pubr() +
-            theme(axis.text.x = element_text(angle=45, hjust=1),
-                legend.position = "top",
-                text = element_text(size=10))
-
-# Create Pairs---------
-data_fig1 = data_fig1 %>% dplyr::select(-region_type, -contains("Quantile"))
-
-data_fig1 = data_fig1 %>% rename(`Simple Ratio` = "Simple Ratio.R_mean",
-                                 Cori = "Cori.R_mean",
-                                 `Walinga & Teunis` = "WT.R_mean",
-                                 `Walinga & Lispsitch` = "WL.R_mean")
-
-pairs = names(data_fig1)[4:7] %>% combn(.,2) %>% split(., col(.))
-
-data_fig1 = map(pairs, function(x) data_fig1 %>% 
-                            dplyr::select(1:3, x[1], x[2]) %>% 
-                            rename(R_1 = x[1], R_2 = x[2]) %>%
-                            mutate(Method_1 = x[1], Method_2 = x[2])
-           )
-data_fig1 = bind_rows(data_fig1)
-data_fig1 = data_fig1 %>% unite(col = "Comparison", Method_1, Method_2, sep=" vs ", remove = F)
-
-data_fig1<- data_fig1 %>% 
-  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", 
-                                                    "Simple Ratio vs Walinga & Lispsitch",
-                                                    "Simple Ratio vs Walinga & Teunis",
-                                                    "Cori vs Walinga & Lispsitch",
-                                                    "Cori vs Walinga & Teunis",
-                                                    "Walinga & Teunis vs Walinga & Lispsitch")))
-
-
-# Calculate Error-------------
-data_fig1 = data_fig1 %>% mutate(error = abs(R_1 - R_2)) 
-
-error_with_simple_ratio.summary = data_fig1 %>% 
-  filter(new_cases >= new_cases.threshold) %>%
-  filter(Method_1 == "Simple Ratio") %>%
-  .$error %>% 
-  summary()
+```{r set_parameters}
+Npop = 1e6
+i.start = 10
+r0_initial = 2.5
+intialOutbreak_length = 50
+r0_lockdown = 0.9
+lockdown_length = 50
+r0_reopening = 1.8
+reopening_length = 50
   
-# Statistical test of error -----------------
+PARAMS <- list(
+  ndays = intialOutbreak_length + lockdown_length + 100,
+  R0_vector = c(r0_initial, r0_initial, r0_lockdown, r0_lockdown, r0_reopening, r0_reopening),
+  R0_days = c(1, intialOutbreak_length, 
+              intialOutbreak_length + 7, intialOutbreak_length + lockdown_length, 
+              intialOutbreak_length + lockdown_length + 7,  intialOutbreak_length + lockdown_length + 100),
+  s.num = Npop - i.start,
+  e.num = 0,
+  i.num = i.start,
+  r.num = 0,
+  se.flow = 0,
+  ei.flow = 0,
+  ir.flow = 0, 
+  d.flow = 0,
+  e.dur = 3,
+  i.dur = 5,
+  N = Npop
+)
 
-ttest_fig1 = data_fig1 %>% 
-  filter(new_cases >= new_cases.threshold) %>% 
-  mutate_at(4:5, log) %>%
-  t.test(error ~ (Method_1 == "Simple Ratio"), data=.)
-
-
+nsimulation = 100
 ```
 
-Using baseline parameters (generation interval with mean 4 days and standard deviation of 3 days [@ganyaniEstimatingGenerationInterval2020; @nishiuraCorrectingActualReproduction2010] and $\tau$ of size 7 days), we find that the simple ratio method agrees well with the 3 other methods (**Figure 1**). The interquaritle range (IQR) for absolute difference between the simple ratio method and other three methods was `r round(error_with_simple_ratio.summary[2],2)` to `r round(error_with_simple_ratio.summary[3],2)`. There was a not a significant difference between the distribution of absolute differences when comparing the simple ratio method to previously published methods versus when comparing previously published methods to one another (p > 0.05 by *students t-test*, **Figure 1B**). 
+As an initial example, we simulated an epidemic with a population `r english::as.english(Npop)` people and starting with `r i.start` infectious individuals. We track the epidemic for `r PARAMS$ndays` days and we set the $R_0$ at `r r0_initial` for the first `r intialOutbreak_length` days, then `r r0_lockdown` for the next `r lockdown_length` days, and then then `r r0_reopening` for the next `r reopening_length`; thus simulating an initial outbreak, a lockdown, and re-opening scenario. **Figure 1A** demonstrates how closely the simple ratio estimates the $R_t$ and is essentially as good as the Cori et al. method. We repeated this process `r nsimulation` times using different randomly selected parameters for the epidemic. **Figure 1B** and **1C** demonstrate 2 more examples. **Figure 1D** summarizes the root-mean-square-error in $R_t$ estimation for both the simple ratio and Cori et al methods. ***.  
 
+```{r initial_simulation}
+source("../../scripts/functions_SEIR_simulation.R")
+source("../../simplified_r_statistic/Estimate_R_Functions.R")
 
-```{r baseline_parameters_fig, fig.width = 12, fig.height = 10, fig.cap = paste0("**Figure 1. Comparison of $R_t$ Esimation between 4 methods using baseline parameters.** (**A**) Line plots showing daily $R_t$ Esimations using all 4 methods (color-coded) for four nations (one nation per sub-panel). Lines represent point-estimate, shaded regions represent 95% confidence-intervals (or 95% credible intervals for the Cori method), and color represents the method used to estimate $R_t$. (**B**) Boxplots showing distribution of absolute differences in daily $R_t$ estimations between the labeled methods for all 30 nations. Days with less than 10 new cases were filtered out prior to analysis, because there is much greater fluctuation in $R_t$ estimations on those days. The absolute differences derived from comparing the simple ratio method to published methods is not significantly different than the absolute differences derived from comparing published methods (p = ", round(ttest_fig1$p.value, 2), " by Student's T-test).")}
+# simulate epidemic based on parameters
+initial_simulation = simulate_seir_ode_wrapper(PARAMS)
 
-# Primary Figure -----------------
-# Panel A for primary figure was created in the previous chunk
-
-panel_B.data = data_fig1 %>%
-                filter(new_cases > new_cases.threshold) %>%
-                mutate(analysis_group = factor(Method_1 != "Simple Ratio")) %>%
-                mutate(analysis_group = fct_recode(analysis_group, 
-                                          `Comparison With\nSimple Ratio Method` = "FALSE", 
-                                          `Comparison Between\nPublished Methods` = "TRUE"))
-
-levels(panel_B.data$Comparison) = gsub("vs ", "vs\n", levels(panel_B.data$Comparison))
-
-panel_B = panel_B.data %>%  
-  ggplot(aes(x = analysis_group, y = error)) + 
-    geom_boxplot(aes(fill = Comparison), outlier.alpha=0.25) + 
-    annotate("segment", x = 1, xend = 2, y = 6, yend=6) +
-    annotate("segment", x = c(0.75, 1.75), xend = c(1.25,2.25), y = 4.5, yend=4.5) + 
-    annotate("segment", x = c(1,2), xend = c(1,2), y = c(4.5,4.5), yend=c(6,6)) + 
-    annotate("text", label = "n.s.", x = 1.5, y=10) + 
-    scale_y_log10(labels = scales::comma) + 
-    labs(x = "", y = "Absolute Difference") + 
-    theme_pubr() + 
-    theme(legend.title = element_blank(),
-          legend.position = "right",
-          text = element_text(size=10))
-
-fig_1 = ggarrange(panel_A, panel_B, nrow = 2, labels = c("A","B"), heights=c(6,5))
-fig_1
-
-# Figure Supplements ----------------
-
-log_error.summary = summary(log(data_fig1$error))
-log_error.Q1 = log_error.summary[2]
-log_error.Q3 = log_error.summary[5]
-log_IQR = log_error.Q3 - log_error.Q1
-ymin = exp(log_error.Q1 - 1.5*log_IQR)
-ymax = exp(log_error.Q3 + 1.5*log_IQR)
-
-fig_S1 = data_fig1 %>% filter(new_cases > 0) %>%
-  ggplot() + geom_point(aes(x = new_cases, y = error), alpha=0.2) + 
-  scale_y_log10(labels = scales::comma, limits = c(ymin,ymax)) + 
-  scale_x_log10() + 
-  labs(x = "number of new cases", y = "Absolute Difference in Rt Estimation") + 
-  facet_wrap(~Comparison) + 
-  theme_pubr()
-```
-
-We next assessed how the absolute differences would be affected if we modified the parameters involved in $R_t$ estimation. Specifically we assessed how the following parameters affected differences in $R_t$ estimation between the 4 methods: (1) the window size of rolling average applied to the new case numbers ("smoothing window size"), (2) the size of $\tau$, and (3) the mean and standard deviation of the generation interval. We found that the as the smoothing window size was increased or as $\tau$ was increased, the median absolute difference (MAD) decreased between the estimation methods (**Figure 2AB**). In contrast, increasing the mean of the generation interval (stepwise from 2 to 6 days) results in an initial decrease in the MADs, but then an increase in the MAD (**Figure 2C**). Increasing the standard deviation of the generation interval step-wise from 1 to 5 days increased the MAD for most comparisons. Although it decreased the MAD when comparing Walinga & Teunis and the Walinga & Lispitch methods; and it didn't substantially modify the MAD when comparing the Simple Ratio and Cori methods. Full distributions of absolute errors can be found in **Figure S2-S5**.
-
-```{r vary_parameters_analysis, fig.width = 12, fig.height = 8, fig.cap = "**Figure 2. Effects of modifying generation interval, $\\tau$, or smoothing window on Median Absoluate Difference (MAD) of daily $R_t$ Esimations** Daily $R_t$ estimations  were made for 30 randomly selected regions using 4 different methods and the pairwise absolute difference between these estimations methods was calculated. Baseline parameters used for estimations were generation interval with a mean of 4 days and standard deviation of 3 days, and a $\\tau$ of 7 days, and a window size of 7 days for applying a rolling average to the number of new cases (smoothing window size). While maintaining the baseline values for the other parameters, stepwise changes in were made to the smoothing window (**A**), $\\tau$ (**B**), the mean of the generation interval (**C**), and the standard deviation of the generation interval (**D**). Color represents the pair of methods that were compared."}
-
-# Load Data--------
-
-data_fig2_smoothing <- read_csv("./DATA - vary_smoothing_parameter.csv", col_types = "ddddffffDdldddddddddddddd")
-data_fig2_tau <- read_csv("./DATA - vary_tau_parameter.csv", col_types = "ddddffffDdldddddddddddddd")
-data_fig2_GT_mean <- read_csv("./DATA - vary_GT_mean_parameter.csv", col_types = "ddddffffDdldddddddddddddd")
-data_fig2_GT_sd <- read_csv("./DATA - vary_GT_sd_parameter.csv", col_types = "ddddffffDdldddddddddddddd")
-
-data_fig2 <- bind_rows(list(data_fig2_smoothing, data_fig2_tau, data_fig2_GT_mean,data_fig2_GT_sd)) %>% unique()
-
-data_fig2 = data_fig2 %>% dplyr::select(1:5, date, new_cases, contains(".R_Mean"))
-data_fig2 = data_fig2 %>% rename(`Simple Ratio` = "Simple Ratio.R_mean",
-                                 Cori = "Cori.R_mean",
-                                 `Walinga & Teunis` = "WT.R_mean",
-                                 `Walinga & Lispsitch` = "WL.R_mean")
-
-# Create Pairs---------
-pairs = names(data_fig2)[8:11] %>% combn(.,2) %>% split(., col(.))
-
-data_fig2 = map(pairs, function(x) data_fig2 %>% 
-                            dplyr::select(1:7, x[1], x[2]) %>% 
-                            rename(R_1 = x[1], R_2 = x[2]) %>%
-                            mutate(Method_1 = x[1], Method_2 = x[2])
-           )
-data_fig2 = bind_rows(data_fig2)
-data_fig2 = data_fig2 %>% unite(col = "Comparison", Method_1, Method_2, sep=" vs ", remove = F)
-
-data_fig2 <- data_fig2 %>% 
-  mutate(Comparison = factor(Comparison, levels = c("Simple Ratio vs Cori", 
-                                                    "Simple Ratio vs Walinga & Lispsitch",
-                                                    "Simple Ratio vs Walinga & Teunis",
-                                                    "Cori vs Walinga & Lispsitch",
-                                                    "Cori vs Walinga & Teunis",
-                                                    "Walinga & Teunis vs Walinga & Lispsitch")))
-# Calculate Error-------------
-data_fig2 = data_fig2 %>% mutate(error = abs(R_1 - R_2)) 
-
-# Create Main Figure---------------
-panel_smoothing = data_fig2 %>%
-                    filter(tau == 7 & GT_mean == 4 & GT_SD == 3) %>%
-                    filter(new_cases >= 10) %>%
-                    group_by(Comparison, smoothing_window) %>% 
-                    summarise(median_absolute_error = median(error, na.rm=T)) %>% ungroup() %>%
-                    mutate(smoothing_window = factor(smoothing_window)) %>%
-                    ggplot() + 
-                      geom_line(aes(x = smoothing_window, y = median_absolute_error,
-                                    group = factor(Comparison), color=factor(Comparison)), size = 1.5) +
-                      #scale_y_log10(labels = scales::comma) + 
-                      labs(x = "smoothing window (days)", y = "Median Absolute Difference in Rt") + 
-                      theme_pubr() + 
-                      theme(legend.title = element_blank(),
-                      legend.position = "right",
-                      text = element_text(size=10))
-
-panel_tau = data_fig2 %>%
-            filter(smoothing_window == 7 & GT_mean == 4 & GT_SD == 3) %>%
-            filter(new_cases >= 10) %>%
-            group_by(Comparison, tau) %>% 
-            summarise(median_absolute_error = median(error, na.rm=T)) %>% ungroup() %>%
-            mutate(tau = factor(tau)) %>%
-            ggplot() + 
-              geom_line(aes(x = tau, y = median_absolute_error,
-                            group = factor(Comparison), color=factor(Comparison)), size = 1.5) +
-              #scale_y_log10(labels = scales::comma) + 
-              labs(x = "tau (days)", y = "MAD in Rt Estimation") + 
-              theme_pubr() + 
-              theme(legend.title = element_blank(),
-              legend.position = "right",
-              text = element_text(size=10))
-
-panel_GT_mean = data_fig2 %>%
-            filter(smoothing_window == 7 & tau == 7 & GT_SD == 3) %>%
-            filter(new_cases >= 10) %>%
-            group_by(Comparison, GT_mean) %>% 
-            summarise(median_absolute_error = median(error, na.rm=T)) %>% ungroup() %>%
-            mutate(GT_mean = factor(GT_mean)) %>%
-            ggplot() + 
-              geom_line(aes(x = GT_mean, y = median_absolute_error, 
-                            group = factor(Comparison), color=factor(Comparison)), size = 1.5) +
-              labs(x = "Mean generation interval (days)", y = "MAD in Rt Estimation") + 
-              theme_pubr() + 
-              theme(legend.title = element_blank(),
-              legend.position = "right",
-              text = element_text(size=10))
+# estimate r_t
+calculate_rt_wrapper <- function(PARAMS, initial_simulation) {
   
-panel_GT_sd = data_fig2 %>%
-            filter(smoothing_window == 7 & tau == 7 & GT_mean == 4) %>%
-            filter(new_cases >= 10) %>%
-            group_by(Comparison, GT_SD) %>% 
-            summarise(median_absolute_error = median(error, na.rm=T)) %>% ungroup() %>%
-            mutate(GT_SD = factor(GT_SD)) %>%
-            ggplot() + 
-              geom_line(aes(x = GT_SD, y = median_absolute_error,
-                            group = factor(Comparison), color=factor(Comparison)), size = 1.5) +
-              labs(x = "Standard Deviation of\ngenerational interval (days)", y = "MAD in Rt Estimation") + 
-              theme_pubr() + 
-              theme(legend.title = element_blank(),
-              legend.position = "right",
-              text = element_text(size=10))
+  # remove incidences with NA values
+  initial_simulation = initial_simulation %>% drop_na(incidence) 
 
-fig_2 = ggarrange(panel_smoothing, panel_tau, panel_GT_mean, panel_GT_sd, 
-                  ncol=2, nrow=2, labels=LETTERS[1:4], common.legend = T)
-fig_2
+  t = initial_simulation$time
+  Incid = initial_simulation$incidence
+  si_mean = PARAMS$e.dur + PARAMS$i.dur
+  si_sd = 1
+  tau = 7 
+  r_est.simple = EstimateR.simple(date = t, Is = Incid, si_mean = si_mean, tau=tau)
+  r_est.cori = EstimateR.cori(date = t, Is = Incid, si_mean = si_mean, si_sd = si_sd, tau=tau)
+  
+  # combine tables
+  r_est <- full_join(r_est.simple, r_est.cori, by="date")
+  df <- full_join(r_est, initial_simulation, by=c("date" = "time"))  
+  
+  return(df)
+}
 
-# Create Figure Supplements---------------
+df <- calculate_rt_wrapper(PARAMS)
 
-fig_S2 = data_fig2 %>%
-            filter(tau == 7 & GT_mean == 4 & GT_SD == 3) %>%
-            filter(new_cases >= 10) %>%
-            mutate(smoothing_window = factor(smoothing_window)) %>%
-            ggplot(aes(x = smoothing_window, y = error)) + geom_boxplot() +
-              facet_wrap(~Comparison) + 
-              scale_y_log10(labels = scales::comma) + 
-              labs(x = "smoothing_window (days)", y = "Absolute Difference") + 
-              theme_pubr() + 
-              theme(legend.title = element_blank(),
-              legend.position = "right",
-              text = element_text(size=10))
+# **********
+# Figure 1A
+# *********
 
+Fig1A <- df %>% filter(date < 201) %>%
+          pivot_longer(cols=c("S", "E", "I", "R"), names_to = c("pop_type"), values_to="pop") %>%
+        ggplot() +
+          geom_line(aes(date, pop/10000, color=pop_type)) +
+          theme_bw()
 
-log_error.summary = summary(log(data_fig2$error))
-log_error.Q1 = log_error.summary[2]
-log_error.Q3 = log_error.summary[5]
-log_IQR = log_error.Q3 - log_error.Q1
-ymin = exp(log_error.Q1 - 1.5*log_IQR)
-ymax = exp(log_error.Q3 + 1.5*log_IQR)
+Fig1B <- df %>% filter(date < 201) %>%
+          pivot_longer(cols=contains(".R_"), names_to = c("Method", ".value"), names_sep=".R_") %>%
+          mutate(Method = factor(Method, levels=c("simple", "cori"))) %>%
+        ggplot() +  
+          geom_line(aes(date, true_rt, group=Method)) +
+          geom_ribbon(aes(x=date, ymin=Quantile_025, ymax=Quantile_975, fill=Method, group=Method), alpha=0.2) +
+          geom_line(aes(x=date, y=mean, color=Method), size=1) +
+          geom_hline(yintercept = 1, linetype = 2) +
+          theme_bw() +
+          ylim(0,5) + labs(x="time", y="Rt") + 
+          theme(
+            strip.background = element_blank(),
+            strip.text.x = element_blank())
 
-fig_S3 = data_fig2 %>%
-            filter(smoothing_window == 7 & GT_mean == 4 & GT_SD == 3) %>%
-            filter(new_cases >= 10) %>%
-            mutate(tau = factor(tau)) %>%
-            ggplot(aes(x = tau, y = error)) + geom_boxplot() +
-              facet_wrap(~Comparison) + 
-              scale_y_log10(labels = scales::comma, limits = c(ymin,ymax)) + 
-              labs(x = "tau (days)", y = "Absolute Difference") + 
-              theme_pubr() + 
-              theme(legend.title = element_blank(),
-              legend.position = "right",
-              text = element_text(size=10))
-
-fig_S4 = data_fig2 %>%
-            filter(smoothing_window == 7 & tau == 7 & GT_SD == 3) %>%
-            filter(new_cases >= 10) %>%
-            mutate(GT_mean = factor(GT_mean)) %>%
-            ggplot(aes(x = GT_mean, y = error)) + geom_boxplot() +
-              facet_wrap(~Comparison) + 
-              scale_y_log10(labels = scales::comma) + 
-              labs(x = "mean of generation interval (days)", y = "Absolute Difference") + 
-              theme_pubr() + 
-              theme(legend.title = element_blank(),
-              legend.position = "right",
-              text = element_text(size=10))
-
-fig_S5 = data_fig2 %>%
-            filter(smoothing_window == 7 & tau == 7 & GT_mean == 4) %>%
-            filter(new_cases >= 10) %>%
-            mutate(GT_SD = factor(GT_SD)) %>%
-            ggplot(aes(x = GT_SD, y = error)) + geom_boxplot() +
-              facet_wrap(~Comparison) + 
-              scale_y_log10(labels = scales::comma) + 
-              labs(x = "standard deviation of generation interval (days)", y = "Absolute Difference") + 
-              theme_pubr() + 
-              theme(legend.title = element_blank(),
-              legend.position = "right",
-              text = element_text(size=10))
+ggpubr::ggarrange(Fig1A, Fig1B, nrow = 2)
 ```
 
-## The $R_t$ Estimator Web App
 
-We developed a Shiny web-app that allows users to estimate $R_t$ for the SARS-CoV-2 pandemic in all countries, all states in the United States, and all counties in the United States over time with 95% confidence intervals for the estimations. The user can estimate $R_t$ using all four different methods described above (**Table 1**).  
+```{r}
+Npop = 1e6
+i.start = 10
+r0_initial = 2.5
+intialOutbreak_length = 50
+r0_lockdown = 0.9
+lockdown_length = 50
+r0_reopening = 1.8
+reopening_length = 50
+  
+PARAMS <- list(
+  ndays = intialOutbreak_length + lockdown_length + 100,
+  R0_vector = c(r0_initial, r0_initial, r0_lockdown, r0_lockdown, r0_reopening, r0_reopening),
+  R0_days = c(1, intialOutbreak_length, 
+              intialOutbreak_length + 7, intialOutbreak_length + lockdown_length, 
+              intialOutbreak_length + lockdown_length + 7,  intialOutbreak_length + lockdown_length + 100),
+  #s.num = 10^c(3:7) - i.start,
+  e.num = 0,
+  i.num = i.start,
+  r.num = 0,
+  se.flow = 0,
+  ei.flow = 0,
+  ir.flow = 0, 
+  d.flow = 0,
+  e.dur = 3,
+  i.dur = 5
+  #N = Npop
+)
 
-The user is able to select one or more geographic regions, and view a graph of how the $R_t$ changes over time for each of those regions. The user can modify parameters associated with the $R_t$ calculation, such as specifying the size of the smoothing window (the number days used for a rolling mean) to smooth the number of new cases per day, the mean and standard deviation of the generation interval, and the number of days to consider when calculating $R_t$ for each day ($\tau$). Additionally, the user can view the cumulative number of cases and new cases per day for each region selected. 
+PARAMS.list <- map(10^c(3:7), function(x) c(PARAMS, N = x, s.num = x - i.start))
+simulations <- map(PARAMS.list, simulate_seir_ode_wrapper)
+simulations.df <- map2(PARAMS.list, simulations, calculate_rt_wrapper)
+simulations.df <- bind_rows(simulations.df, .id="simulation")
 
-For each geographic region selected, the web-app summarizes the last 3 weeks of $R_t$ into colored score cards. For each week, the score card displays the range of $R_t$ point estimates. The color of a score card is determined by the average $R_t$ point esimations and confidence interval for the particular week analyzed: the mean upper limit is below 1 (green); the mean point estimate is below 1 but the mean upper limit is above 1 (yellow); the mean point estimate is above 1 but the mean lower limit is below 1 (orange); the mean lower limit is above 1 (red). 
 
-![](Figure_1.png)
+simulations.df %>% filter(date < 201) %>%
+    pivot_longer(cols=c("S", "E", "I", "R"), names_to = c("pop_type"), values_to="pop") %>%
+  ggplot() +
+    geom_line(aes(date, pop/10000, color=pop_type)) +
+    facet_wrap(~simulation, scales="free") +
+    theme_bw()
 
-**Figure 3. Interface of the Web-App**. The user selects one or more regions and a date-range of interest (A, red shaed region). For each of those selected regions and date-range, the $R_t$ value is displayed over time as a line graph on the top graph in the middle pane (B).  Additionally, for the lower graph, the user can toggle between viewing the cumulative number cases and new cases per day for each of the selected regions (C). The user controls parameters for calculating R: namely the size of the smoothing window for smoothing new cases per day,  method for calculating R, the mean and standard deviation of the generation interval, and the number of days used to calculate $R_t$ (D, green-shaded area). For each of the selected regions, a colored score card is displayed for each of the last three weeks based on the average $R_t$ point estimate and confidence limits (E). If the user hovers over the graphs, additional information about the data is displayed in an information window (F). The date that the data and web-app were last updated are displayed (G). 
+simulations.df %>% filter(date < 201) %>%
+    pivot_longer(cols=contains(".R_"), names_to = c("Method", ".value"), names_sep=".R_") %>%
+    mutate(Method = factor(Method, levels=c("simple", "cori"))) %>%
+  ggplot() +  
+    geom_line(aes(date, true_rt, group=Method)) +
+    geom_ribbon(aes(x=date, ymin=Quantile_025, ymax=Quantile_975, fill=Method, group=Method), alpha=0.2) +
+    geom_line(aes(x=date, y=mean, color=Method), size=1) +
+    geom_hline(yintercept = 1, linetype = 2) +
+    facet_wrap(~simulation) +
+    theme_bw() +
+    ylim(0,5) + labs(x="time", y="Rt") + 
+    theme(strip.background = element_blank(),
+          strip.text.x = element_blank())
+
+```
 
 ## References
-
-<div id="refs"></div>
-
-## Supplementary Figures 
-
-```{r Figure_S1, fig.cap = "**Figure S1. There is a negative correlation between new cases and absolute difference in $R_t$ Estimations.** The absolute difference in particularly high when new cases are below 10. Some outliers were removed for better visualization."}
-fig_S1
-```
-
-```{r Figure_S2, fig.height = 6, fig.cap = "**Figure S2. Effect of modifying the Smoothing Window Size on Median Absolute Difference in $R_t$ Estimation.**"}
-fig_S2
-```
-
-```{r Figure_S3, fig.cap = "**Figure S3. Effect of modifying $\\tau$ size on median absolute difference in $R_t$ estimation.** Some outliers were removed for better visualization."}
-fig_S3
-```
-
-```{r Figure_S4, fig.cap = "**Figure S4. Effect of modifying the mean of the generation interval on median absolute difference in $R_t$ estimation.**"}
-fig_S4
-```
-
-```{r Figure_S5, fig.cap = "**Figure S5. Effect of modifying the standard deviation of the generation interval on median absolute difference in $R_t$ estimation.**"}
-fig_S5
-```

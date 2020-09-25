@@ -1,5 +1,5 @@
 # This is a list of functions to estiamte R
-
+library("RcppRoll")
 ##-----Smoothing-Function------
 
 smooth_new_cases <- function(data, smoothing_window) {
@@ -41,16 +41,16 @@ remove_leading_unnecessary_data <- function(data) {
 
 ## ---- Simple-R-Estimate ----
 
-EstimateR.simple <- function(date, Is, si_mean, tau, si_sd = NULL) {
+EstimateR.simple <- function(date, Is, si_mean, tau) {
   
   df = data.frame(date, Is)
     
   # Basic Ratio
   df = df %>%
-    mutate(denominator = roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA))) %>%
-    mutate(numerator = lead(denominator, si_mean)) %>%
-    mutate(numerator = replace(numerator, which(numerator == 0), NA)) %>%
+    mutate(numerator = roll_sum(Is,  tau, align="center", fill = c(NA, NA, NA))) %>%
+    mutate(denominator = lag(numerator, si_mean)) %>%
     mutate(denominator = replace(denominator, which(denominator == 0), NA)) %>%
+    mutate(numerator = replace(numerator, which(numerator == 0), NA)) %>%
     mutate(simple.R_mean = numerator/denominator)
   
   # remove any ratios involving 0 new_cases in denominator or numerator
