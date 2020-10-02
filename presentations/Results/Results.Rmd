@@ -103,27 +103,33 @@ source("../../simplified_r_statistic/Estimate_R_Functions.R")
 initial_simulation = simulate_seir_ode_wrapper(PARAMS)
 
 # estimate r_t
-calculate_rt_wrapper <- function(PARAMS, initial_simulation) {
+calculate_rt_wrapper <- function(simulation, e.dur, i.dur, si_sd, tau) {
   
+  si_mean = e.dur + i.dur
+    
   # remove incidences with NA values
-  initial_simulation = initial_simulation %>% drop_na(incidence) 
+  simulation = simulation %>% drop_na(incidence) 
 
-  t = initial_simulation$time
-  Incid = initial_simulation$incidence
-  si_mean = PARAMS$e.dur + PARAMS$i.dur
-  si_sd = 1
-  tau = 7 
+  t = simulation$time
+  Incid = simulation$incidence
   r_est.simple = EstimateR.simple(date = t, Is = Incid, si_mean = si_mean, tau=tau)
   r_est.cori = EstimateR.cori(date = t, Is = Incid, si_mean = si_mean, si_sd = si_sd, tau=tau)
   
   # combine tables
   r_est <- full_join(r_est.simple, r_est.cori, by="date")
-  df <- full_join(r_est, initial_simulation, by=c("date" = "time"))  
+  df <- full_join(r_est, simulation, by=c("date" = "time"))  
+  df$tau = tau
+  df$si_mean = si_mean
+  df$si_sd = si_sd
+  df$e.dur = e.dur
+  df$i.dur = i.dur
   
-  return(df)
+  return(tibble(df))
 }
 
-df <- calculate_rt_wrapper(PARAMS)
+df <- calculate_rt_wrapper(initial_simulation, 
+                           e.dur = PARAMS$e.dur, i.dur = PARAMS$i.dur,
+                           si_sd = 1, tau = 7)
 
 # **********
 # Figure 1A
@@ -132,8 +138,9 @@ df <- calculate_rt_wrapper(PARAMS)
 Fig1A <- df %>% filter(date < 201) %>%
           pivot_longer(cols=c("S", "E", "I", "R"), names_to = c("pop_type"), values_to="pop") %>%
         ggplot() +
-          geom_line(aes(date, pop/10000, color=pop_type)) +
-          theme_bw()
+          geom_line(aes(date, pop/1000, color=pop_type)) +
+          theme_bw() +
+          labs(y = "population size (thousands)")
 
 Fig1B <- df %>% filter(date < 201) %>%
           pivot_longer(cols=contains(".R_"), names_to = c("Method", ".value"), names_sep=".R_") %>%
@@ -144,7 +151,7 @@ Fig1B <- df %>% filter(date < 201) %>%
           geom_line(aes(x=date, y=mean, color=Method), size=1) +
           geom_hline(yintercept = 1, linetype = 2) +
           theme_bw() +
-          ylim(0,5) + labs(x="time", y="Rt") + 
+          ylim(0,5) + labs(x="time", y=expression(R[t])) + 
           theme(
             strip.background = element_blank(),
             strip.text.x = element_blank())
@@ -156,11 +163,11 @@ ggpubr::ggarrange(Fig1A, Fig1B, nrow = 2)
 ```{r}
 Npop = 1e6
 i.start = 10
-r0_initial = 2.5
+r0_initial = 2
 intialOutbreak_length = 50
-r0_lockdown = 0.9
+r0_lockdown = 0.8
 lockdown_length = 50
-r0_reopening = 1.8
+r0_reopening = 1.5
 reopening_length = 50
   
 PARAMS <- list(
@@ -169,7 +176,7 @@ PARAMS <- list(
   R0_days = c(1, intialOutbreak_length, 
               intialOutbreak_length + 7, intialOutbreak_length + lockdown_length, 
               intialOutbreak_length + lockdown_length + 7,  intialOutbreak_length + lockdown_length + 100),
-  #s.num = 10^c(3:7) - i.start,
+  s.num = Npop - i.start,
   e.num = 0,
   i.num = i.start,
   r.num = 0,
@@ -177,14 +184,14 @@ PARAMS <- list(
   ei.flow = 0,
   ir.flow = 0, 
   d.flow = 0,
-  e.dur = 3,
-  i.dur = 5
-  #N = Npop
+  #e.dur = 3,
+  #i.dur = 5,
+  N = Npop
 )
 
-PARAMS.list <- map(10^c(3:7), function(x) c(PARAMS, N = x, s.num = x - i.start))
-simulations <- map(PARAMS.list, simulate_seir_ode_wrapper)
-simulations.df <- map2(PARAMS.list, simulations, calculate_rt_wrapper)
+PARAMS = cross2(3:5,3:5) %>% map(., function(x) c(PARAMS, e.dur=x[[1]], i.dur=x[[2]])) 
+simulation <- map(PARAMS, simulate_seir_ode_wrapper)
+simulations.df <- map2(simulation, PARAMS, function(x,y) calculate_rt_wrapper(x, e.dur = y$e.dur, i.dur = y$i.dur, si_sd=1, tau=1))
 simulations.df <- bind_rows(simulations.df, .id="simulation")
 
 
@@ -192,7 +199,7 @@ simulations.df %>% filter(date < 201) %>%
     pivot_longer(cols=c("S", "E", "I", "R"), names_to = c("pop_type"), values_to="pop") %>%
   ggplot() +
     geom_line(aes(date, pop/10000, color=pop_type)) +
-    facet_wrap(~simulation, scales="free") +
+    facet_wrap(e.dur~i.dur) +
     theme_bw()
 
 simulations.df %>% filter(date < 201) %>%
@@ -203,9 +210,9 @@ simulations.df %>% filter(date < 201) %>%
     geom_ribbon(aes(x=date, ymin=Quantile_025, ymax=Quantile_975, fill=Method, group=Method), alpha=0.2) +
     geom_line(aes(x=date, y=mean, color=Method), size=1) +
     geom_hline(yintercept = 1, linetype = 2) +
-    facet_wrap(~simulation) +
+    facet_wrap(e.dur~i.dur) +
     theme_bw() +
-    ylim(0,5) + labs(x="time", y="Rt") + 
+    ylim(0,5) + labs(x="time", y="Rt") #+ 
     theme(strip.background = element_blank(),
           strip.text.x = element_blank())
 
